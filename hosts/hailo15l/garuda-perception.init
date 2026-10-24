@@ -1,0 +1,196 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          garuda-perception
+# Required-Start:    isp_media_server hailo-thermal-service.sh
+# Default-Start:     5
+# Default-Stop:      0 1 6
+### END INIT INFO
+# garuda-perception + garuda-mono-shim.
+#
+# BOOT RULE: this script must never block. /etc/init.d/rc runs the S99* scripts sequentially in
+# plain glob order and "garuda-perception" sorts before "hailo-thermal-service.sh", so any wait
+# performed here stalls the very services we depend on (proven: a 180 s in-script wait for the
+# thermal files ended one second before the thermal engine it was blocking finally started).
+# start() therefore only spawns a detached background starter and returns immediately. The starter
+# (pid in $STARTER_PID) does the readiness wait, the node launch-with-retry and the shim launch,
+# appending its progress to $LOG.
+export HAILO_MEDIA_LIB_SKIP_METADATA_CONFIG_VALIDATION=1
+export LD_LIBRARY_PATH=/opt/garuda/lib
+NODE=/opt/garuda/bin/garuda-perception; SHIM=/opt/garuda/bin/garuda_mono_shim.py; CFG=/opt/garuda/perception.json
+NODE_PID=/var/run/garuda-perception.pid; SHIM_PID=/var/run/garuda-mono-shim.pid; LOG=/var/log/garuda-perception.log
+STARTER_PID=/var/run/garuda-perception-starter.pid
+# Absolute path to this script (the starter re-invokes it); rc always calls us absolutely.
+SELF=$0
+case "$SELF" in /*) ;; *) SELF=/etc/init.d/garuda-perception ;; esac
+
+alive() {
+  [ -f "$1" ] || return 1
+  _ap=$(cat "$1" 2>/dev/null)
+  [ -n "$_ap" ] || return 1
+  kill -0 "$_ap" 2>/dev/null
+}
+# Signal only a pid that is really ours: the pidfile could be stale and its pid reused.
+# $1 = pidfile, $2 = fixed string that must appear in /proc/<pid>/cmdline.
+kill_pidfile() {
+  [ -f "$1" ] || return 0
+  _kp=$(cat "$1" 2>/dev/null)
+  rm -f "$1"
+  [ -n "$_kp" ] || return 0
+  kill -0 "$_kp" 2>/dev/null || return 0
+  tr '\0' ' ' < /proc/$_kp/cmdline 2>/dev/null | grep -qF -- "$2" || return 0
+  kill "$_kp" 2>/dev/null
+  _kw=0
+  while [ $_kw -lt 5 ]; do
+    kill -0 "$_kp" 2>/dev/null || return 0
+    _kw=$((_kw+1)); sleep 1
+  done
+  kill -9 "$_kp" 2>/dev/null
+  return 0
+}
+node_present() {
+  pgrep -f "^\./bin/garuda-perception" >/dev/null 2>&1 && return 0
+  pgrep -f "^/opt/garuda/bin/garuda-perception" >/dev/null 2>&1 && return 0
+  return 1
+}
+strays_present() {
+  node_present && return 0
+  pgrep -f "^python3 bin/garuda_mono_shim\.py" >/dev/null 2>&1 && return 0
+  pgrep -f "^/usr/bin/python3 /opt/garuda/bin/garuda_mono_shim\.py" >/dev/null 2>&1 && return 0
+  return 1
+}
+# TERM, wait up to 5 s, then KILL. Returns 0 only once nothing matching is left -- callers rely on
+# that: the media library refuses a second instance while the old node is still alive.
+kill_strays() {
+  pkill -f "^\./bin/garuda-perception" || true
+  pkill -f "^/opt/garuda/bin/garuda-perception" || true
+  pkill -f "^python3 bin/garuda_mono_shim\.py" || true
+  pkill -f "^/usr/bin/python3 /opt/garuda/bin/garuda_mono_shim\.py" || true
+  _ks=0
+  while [ $_ks -lt 5 ]; do
+    strays_present || return 0
+    _ks=$((_ks+1)); sleep 1
+  done
+  pkill -9 -f "^\./bin/garuda-perception" || true
+  pkill -9 -f "^/opt/garuda/bin/garuda-perception" || true
+  pkill -9 -f "^python3 bin/garuda_mono_shim\.py" || true
+  pkill -9 -f "^/usr/bin/python3 /opt/garuda/bin/garuda_mono_shim\.py" || true
+  _ks=0
+  while [ $_ks -lt 5 ]; do
+    strays_present || return 0
+    _ks=$((_ks+1)); sleep 1
+  done
+  return 1
+}
+wait_ready() {
+  i=0
+  while [ $i -lt 180 ]; do
+    if pgrep -f "^/usr/bin/isp_media_server" >/dev/null; then
+      [ -e /dev/shm/sem.thermal_data_sem ] && [ -e /tmp/thermal_data.bin ] && return 0
+    elif [ $i -eq 5 ]; then
+      echo "$(date) isp_media_server absent, restarting it" >> $LOG
+      /etc/init.d/isp_media_server restart >> $LOG 2>&1
+    fi
+    i=$((i+1))
+    [ $((i % 10)) -eq 0 ] && echo "$(date) waiting for ISP server + thermal engine files (${i}s)" >> $LOG
+    sleep 1
+  done
+  echo "$(date) ISP server + thermal engine files never appeared" >> $LOG; return 1
+}
+# The detached starter body -- runs as "$SELF __start_bg", never invoked from rc directly.
+start_bg() {
+  echo "$(date) starter begin (pid $$)" >> $LOG
+  if ! wait_ready; then
+    echo "$(date) starter giving up: readiness gate failed" >> $LOG
+    rm -f $STARTER_PID; return 1
+  fi
+  n=1
+  ok=0
+  while [ $n -le 10 ]; do
+    (cd /opt/garuda && exec nohup $NODE --config $CFG >> $LOG 2>&1 < /dev/null) & echo $! > $NODE_PID
+    t=0
+    ready=0
+    while [ $t -lt 60 ]; do
+      if ! kill -0 "$(cat $NODE_PID)" 2>/dev/null; then
+        echo "$(date) node exited during startup (attempt $n/10)" >> $LOG
+        kill_strays
+        sleep 5
+        break
+      fi
+      if grep -q " 0100007F:230B 00000000:0000 0A " /proc/net/tcp; then
+        ready=1
+        break
+      fi
+      t=$((t+1)); sleep 1
+    done
+    if [ $ready -eq 1 ]; then
+      # The feed port can open before the media library finishes initialising: never hand the shim
+      # a node that has already died.
+      if alive $NODE_PID; then
+        ok=1
+        break
+      fi
+      echo "$(date) node died after readiness (attempt $n/10)" >> $LOG
+      kill_strays
+      rm -f $NODE_PID
+      sleep 5
+      n=$((n+1))
+      continue
+    fi
+    if [ $t -ge 60 ]; then
+      echo "$(date) node alive but feed port not listening after 60 s" >> $LOG
+      kill_strays
+      kill "$(cat $NODE_PID)" 2>/dev/null
+    fi
+    n=$((n+1))
+  done
+  if [ $ok -ne 1 ]; then
+    echo "$(date) node failed to start after 10 attempts" >> $LOG
+    rm -f $NODE_PID $SHIM_PID $STARTER_PID; return 1
+  fi
+  (exec nohup /usr/bin/python3 $SHIM >> $LOG 2>&1 < /dev/null) & echo $! > $SHIM_PID
+  echo "$(date) starter done: node $(cat $NODE_PID), shim $(cat $SHIM_PID)" >> $LOG
+  rm -f $STARTER_PID
+  return 0
+}
+start() {
+  alive $NODE_PID && { echo "garuda-perception: already running (node $(cat $NODE_PID))"; return 0; }
+  alive $STARTER_PID && { echo "garuda-perception: already starting (starter $(cat $STARTER_PID))"; return 0; }
+  # Subshell + exec + full redirection: the only launch form that detaches cleanly here (a plain
+  # backgrounded command inside a function leaves a waiting shell holding the caller's stdio).
+  # coreutils nohup execs rather than forking, so $! is the starter's real, final pid.
+  ( exec nohup /bin/sh "$SELF" __start_bg >> $LOG 2>&1 < /dev/null ) & echo $! > $STARTER_PID
+  echo "garuda-perception: starting in background (log: $LOG)"
+  return 0
+}
+stop() {
+  kill_pidfile $STARTER_PID __start_bg
+  kill_pidfile $SHIM_PID garuda_mono_shim.py
+  kill_pidfile $NODE_PID garuda-perception
+  kill_strays
+  echo "garuda-perception stopped"
+}
+status() {
+  for p in $NODE_PID $SHIM_PID; do
+    if alive $p; then echo "$p running (pid $(cat $p))"; else echo "$p stopped"; fi
+  done
+  if alive $STARTER_PID; then echo "$STARTER_PID starting (pid $(cat $STARTER_PID))"; else echo "$STARTER_PID finished"; fi
+}
+case "$1" in
+  start) start ;;
+  stop) stop ;;
+  restart)
+    stop
+    # Do not relaunch until the old node is really gone -- the media library refuses a second
+    # instance for sensor 0 while it is still around.
+    _r=0
+    while [ $_r -lt 10 ]; do
+      node_present || break
+      _r=$((_r+1)); sleep 1
+    done
+    sleep 1
+    start
+    ;;
+  status) status ;;
+  __start_bg) start_bg ;;
+  *) echo "Usage: $0 {start|stop|restart|status}"; exit 1 ;;
+esac

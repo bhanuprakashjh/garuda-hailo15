@@ -1,0 +1,9 @@
+/**:
+  ros__parameters:
+    fcu_url: "tcp://127.0.0.1:5760"
+    gcs_url: ""
+    tgt_system: 1
+    tgt_component: 1
+    system_id: 201
+    component_id: 191
+    plugin_allowlist: [sys_status, sys_time, imu, command, local_position, setpoint_raw]

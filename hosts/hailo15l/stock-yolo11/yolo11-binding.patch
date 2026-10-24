@@ -1,0 +1,36 @@
+diff --git a/hailo-analytics/apps/webserver/pipeline/detection_pipeline.cpp b/hailo-analytics/apps/webserver/pipeline/detection_pipeline.cpp
+index f2cd281..734f1d3 100644
+--- a/hailo-analytics/apps/webserver/pipeline/detection_pipeline.cpp
++++ b/hailo-analytics/apps/webserver/pipeline/detection_pipeline.cpp
+@@ -23,7 +23,7 @@
+ #include "hailo_analytics/pipeline/cropping/aggregator_stage.hpp"
+ #include "hailo_analytics/analytics/analytic_metadata_ws_sender.hpp"
+ #include "hailo_analytics/analytics/ai_models_config.hpp"
+-#include "hailo_postprocess_tools/labels/hailo_yolov8n.hpp"
++#include "hailo_postprocess_tools/labels/coco_eighty.hpp"
+ #include "common/logger_macros.hpp"
+ #include "hailo_analytics/analytics/common_configs.hpp"
+ #include "hailo_analytics/analytics/detection.hpp"
+@@ -166,13 +166,20 @@ void DetectionPipeline::build_pipeline()
+     }
+     tiling_cfg.detection_config.ai_config.scheduler_timeout = std::chrono::milliseconds(50);
+ 
+-    ai_models::apply_to(ai_models::YOLOV8S, tiling_cfg.detection_config);
++    // YOLO11 model binding; preserve stock camera, tiling and tracker defaults.
++    tiling_cfg.tiling_config.output_width = 640;
++    tiling_cfg.tiling_config.output_height = 640;
++    tiling_cfg.detection_config.ai_config.hef_path = "/opt/hailo-yolo11/models/yolov11s_hailo15l_v5.3.0.hef";
++    tiling_cfg.detection_config.post_config.so_path = "/usr/lib/hailo-post-processes/libyolo_hailortpp_post.so";
++    tiling_cfg.detection_config.post_config.function_name = "filter";
++    tiling_cfg.detection_config.post_config.config_path = "/opt/hailo-yolo11/coco-postprocess.json";
++    WEBSERVER_LOG_INFO("YOLO11s model: {} (640x640, COCO)", tiling_cfg.detection_config.ai_config.hef_path.value());
+ 
+     // Enable detection tracker inside the tiling pipeline
+     tiling_cfg.tracker_config.enabled = true;
+     tiling_cfg.tracker_config.queue_size = 1;
+     tiling_cfg.tracker_config.trace = false;
+-    tiling_cfg.tracker_config.labels_map = ::common::hailo_yolov8n;
++    tiling_cfg.tracker_config.labels_map = ::common::coco_eighty;
+ 
+     auto ai_pipeline_result =
+         tiling::generate_tiling_detection_pipeline(std::string(DETECTION_AI_PIPELINE), tiling_cfg);

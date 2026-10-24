@@ -1,0 +1,41 @@
+{
+  "hef": "/opt/garuda-fresh/models/yolov8m_hailo15l_v5.3.0.hef",
+  "postprocess_so": "/usr/lib/hailo-post-processes/libyolo_hailortpp_post.so",
+  "frame_w": 1280,
+  "frame_h": 720,
+  "ai_stream": "sink0",
+  "jpeg_stream": "sink1",
+  "medialib_config": "/opt/garuda-fresh/medialib.json",
+  "profile": "GarudaFreshLetterbox",
+  "postprocess_config": "/opt/garuda-fresh/postprocess.json",
+  "input_w": 640,
+  "input_h": 640,
+  "input_geometry": "letterbox",
+  "feed_port": 8981,
+  "command_port": 8982,
+  "jpeg_fps": 10,
+  "jpeg_quality": 75,
+  "tracking": {
+    "classes": [
+      "person",
+      "car",
+      "bicycle",
+      "motorcycle",
+      "dog",
+      "cell phone"
+    ],
+    "freshness_ms": 200,
+    "coast_ms": 1200,
+    "confirm_ms": 120,
+    "max_gap_ms": 250,
+    "max_tracks": 64,
+    "max_detections": 128,
+    "birth_confidence": 0.5,
+    "control_confidence": 0.4,
+    "low_confidence": 0.15,
+    "position_acceleration_std": 0.4
+  },
+  "record_path": "",
+  "record_limit": 6000,
+  "capture_stream_port": 8983
+}

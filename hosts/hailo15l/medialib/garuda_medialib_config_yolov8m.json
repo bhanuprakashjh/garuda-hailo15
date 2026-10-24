@@ -1,0 +1,25 @@
+{
+  "version": "2.0.0",
+  "metadata": {
+    "architecture": "hailo15l",
+    "content_hash": "",
+    "description": "garuda-perception yolov8m A/B (default profile GarudaYolov8m)",
+    "generation_timestamp": ""
+  },
+  "backup_folder_path": "/opt/garuda/medialib/backups",
+  "default_profile": "GarudaYolov8m",
+  "profiles": [
+    {
+      "name": "Garuda",
+      "config_file": "/opt/garuda/medialib/profile/garuda_profile.json"
+    },
+    {
+      "name": "GarudaYolov8n",
+      "config_file": "/opt/garuda/medialib/profile/garuda_profile_yolov8n.json"
+    },
+    {
+      "name": "GarudaYolov8m",
+      "config_file": "/opt/garuda/medialib/profile/garuda_profile_yolov8m.json"
+    }
+  ]
+}

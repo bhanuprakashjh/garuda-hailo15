@@ -1,0 +1,8 @@
+hailo kalman all-classes (walk) n=1494  150.0s | person ids  22 | live-person states 1493 (99%) | no-person states    1 | lock coasting   37 | lock None    0 | x range [     -4,    1147] | age max  157
+hailo kalman all-classes (walk) lock id sequence: 1 -> 234 -> 284 -> 234 -> 285 -> 301
+hailo kalman person-only (sit) n=1495  150.0s | person ids   1 | live-person states 1495 (100%) | no-person states    0 | lock coasting    0 | lock None    0 | x range [    244,     313] | age max  152
+hailo kalman person-only (sit) lock id sequence: 1
+hailo kalman person-only (empty) n=1495  150.0s | person ids   0 | live-person states    0 ( 0%) | no-person states 1495 | lock coasting    0 | lock None 1495 | x range [    n/a,    n/a] | age max  151
+hailo kalman person-only (empty) lock id sequence: None
+hailo kalman person-only (walk-out) n=1794  180.1s | person ids   2 | live-person states  208 (11%) | no-person states 1561 | lock coasting   25 | lock None 1561 | x range [    451,    1202] | age max  151
+hailo kalman person-only (walk-out) lock id sequence: 375 -> None

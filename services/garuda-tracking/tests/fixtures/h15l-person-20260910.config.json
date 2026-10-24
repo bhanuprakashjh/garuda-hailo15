@@ -1,0 +1,1 @@
+{"classes": ["person", "car", "bicycle", "motorcycle", "dog", "cell phone"], "freshness_ms": 200, "coast_ms": 1200, "confirm_ms": 120, "max_gap_ms": 250, "max_tracks": 64, "max_detections": 128, "birth_confidence": 0.5, "control_confidence": 0.4, "low_confidence": 0.15}

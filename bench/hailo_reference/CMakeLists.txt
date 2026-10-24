@@ -1,0 +1,26 @@
+cmake_minimum_required(VERSION 3.20)
+project(saved_hailo_reference CXX)
+set(CMAKE_CXX_STANDARD 17)
+get_filename_component(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+set(GARUDA_BUILD_NODE ON CACHE BOOL "" FORCE)
+set(GARUDA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GARUDA_BUILD_FRESH_TRACKING ON CACHE BOOL "" FORCE)
+add_subdirectory(${ROOT}/services/garuda-perception perception)
+include(${ROOT}/hosts/hailo15l/cmake/hailo15l.cmake)
+add_executable(hailo-reference-probe probe.cpp)
+target_include_directories(hailo-reference-probe PRIVATE ${GARUDA_HAILO_INCLUDE}
+  ${ROOT}/hosts/hailo15l ${ROOT}/services/garuda-perception/third_party)
+target_link_libraries(hailo-reference-probe PRIVATE garuda_dsp_crop hailo_analytics
+  hailo_postprocess_tools medialib hailort pthread)
+set(HAILO_BOARD_HEADERS "" CACHE PATH "Optional installed board /usr/include/hailo copy")
+if(HAILO_BOARD_HEADERS)
+  target_include_directories(hailo-reference-probe BEFORE PRIVATE ${HAILO_BOARD_HEADERS})
+endif()
+add_executable(hailo-preprocess-probe preprocess_probe.cpp)
+target_include_directories(hailo-preprocess-probe PRIVATE ${GARUDA_HAILO_INCLUDE}
+  ${ROOT}/hosts/hailo15l ${ROOT}/services/garuda-perception/third_party)
+if(HAILO_BOARD_HEADERS)
+  target_include_directories(hailo-preprocess-probe BEFORE PRIVATE ${HAILO_BOARD_HEADERS})
+endif()
+target_link_libraries(hailo-preprocess-probe PRIVATE garuda_dsp_crop hailo_analytics
+  hailo_postprocess_tools medialib hailort pthread)

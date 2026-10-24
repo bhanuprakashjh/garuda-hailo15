@@ -1,0 +1,49 @@
+diff --git a/hailo-analytics/apps/webserver/pipeline/detection_pipeline.cpp b/hailo-analytics/apps/webserver/pipeline/detection_pipeline.cpp
+index f2cd281..b98bba4 100644
+--- a/hailo-analytics/apps/webserver/pipeline/detection_pipeline.cpp
++++ b/hailo-analytics/apps/webserver/pipeline/detection_pipeline.cpp
+@@ -1,6 +1,7 @@
+ #include "detection_pipeline.hpp"
+ 
+ #include <stdint.h>
++#include <cstdlib>
+ #include <hailo_postprocess_tools/objects/hailo_objects.hpp>
+ #include <media_library/frontend.hpp>
+ #include <tl/expected.hpp>
+@@ -23,7 +24,7 @@
+ #include "hailo_analytics/pipeline/cropping/aggregator_stage.hpp"
+ #include "hailo_analytics/analytics/analytic_metadata_ws_sender.hpp"
+ #include "hailo_analytics/analytics/ai_models_config.hpp"
+-#include "hailo_postprocess_tools/labels/hailo_yolov8n.hpp"
++#include "hailo_postprocess_tools/labels/coco_eighty.hpp"
+ #include "common/logger_macros.hpp"
+ #include "hailo_analytics/analytics/common_configs.hpp"
+ #include "hailo_analytics/analytics/detection.hpp"
+@@ -166,13 +167,25 @@ void DetectionPipeline::build_pipeline()
+     }
+     tiling_cfg.detection_config.ai_config.scheduler_timeout = std::chrono::milliseconds(50);
+ 
+-    ai_models::apply_to(ai_models::YOLOV8S, tiling_cfg.detection_config);
++    // Compatible COCO model comparison; preserve camera, tiling and tracker defaults.
++    tiling_cfg.tiling_config.output_width = 640;
++    tiling_cfg.tiling_config.output_height = 640;
++    const char *comparison_model = std::getenv("HAILO_COMPARISON_MODEL");
++    const std::string model = comparison_model ? comparison_model : "yolov11s";
++    if (model != "yolov8m" && model != "yolov11m" && model != "yolov11s")
++        throw std::runtime_error("Unsupported HAILO_COMPARISON_MODEL");
++    tiling_cfg.detection_config.ai_config.hef_path =
++        "/opt/hailo-yolo11/models/" + model + "_hailo15l_v5.3.0.hef";
++    tiling_cfg.detection_config.post_config.so_path = "/usr/lib/hailo-post-processes/libyolo_hailortpp_post.so";
++    tiling_cfg.detection_config.post_config.function_name = "filter";
++    tiling_cfg.detection_config.post_config.config_path = "/opt/hailo-yolo11/coco-postprocess.json";
++    WEBSERVER_LOG_INFO("COCO comparison model: {} (640x640)", tiling_cfg.detection_config.ai_config.hef_path.value());
+ 
+     // Enable detection tracker inside the tiling pipeline
+     tiling_cfg.tracker_config.enabled = true;
+     tiling_cfg.tracker_config.queue_size = 1;
+     tiling_cfg.tracker_config.trace = false;
+-    tiling_cfg.tracker_config.labels_map = ::common::hailo_yolov8n;
++    tiling_cfg.tracker_config.labels_map = ::common::coco_eighty;
+ 
+     auto ai_pipeline_result =
+         tiling::generate_tiling_detection_pipeline(std::string(DETECTION_AI_PIPELINE), tiling_cfg);

@@ -1,0 +1,25 @@
+{
+  "version": "2.0.0",
+  "metadata": {
+    "architecture": "hailo15l",
+    "content_hash": "",
+    "description": "Independent fresh tracking profile",
+    "generation_timestamp": ""
+  },
+  "backup_folder_path": "/opt/garuda-fresh/backups",
+  "default_profile": "GarudaFresh",
+  "profiles": [
+    {
+      "name": "GarudaFresh",
+      "config_file": "/opt/garuda-fresh/profile.json"
+    },
+    {
+      "name": "GarudaFreshLetterbox",
+      "config_file": "/opt/garuda-fresh/profile-letterbox.json"
+    },
+    {
+      "name": "GarudaFreshNative",
+      "config_file": "/opt/garuda-fresh/profile-native.json"
+    }
+  ]
+}

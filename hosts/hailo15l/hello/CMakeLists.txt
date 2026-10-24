@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.20)
+project(hello_hailort CXX)
+set(CMAKE_CXX_STANDARD 17)
+add_executable(hello_hailort hello_hailort.cpp)
+target_link_libraries(hello_hailort PRIVATE hailort)

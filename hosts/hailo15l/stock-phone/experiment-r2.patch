@@ -1,0 +1,471 @@
+diff --git a/hailo-analytics/apps/webserver/pipeline/detection_pipeline.cpp b/hailo-analytics/apps/webserver/pipeline/detection_pipeline.cpp
+index f2cd281..7217d1a 100644
+--- a/hailo-analytics/apps/webserver/pipeline/detection_pipeline.cpp
++++ b/hailo-analytics/apps/webserver/pipeline/detection_pipeline.cpp
+@@ -1,7 +1,9 @@
+ #include "detection_pipeline.hpp"
+ 
+ #include <stdint.h>
++#include <cstdlib>
+ #include <hailo_postprocess_tools/objects/hailo_objects.hpp>
++#include <hailo_postprocess_tools/objects/hailo_common.hpp>
+ #include <media_library/frontend.hpp>
+ #include <tl/expected.hpp>
+ #include <chrono>
+@@ -23,7 +25,8 @@
+ #include "hailo_analytics/pipeline/cropping/aggregator_stage.hpp"
+ #include "hailo_analytics/analytics/analytic_metadata_ws_sender.hpp"
+ #include "hailo_analytics/analytics/ai_models_config.hpp"
+-#include "hailo_postprocess_tools/labels/hailo_yolov8n.hpp"
++#include "hailo_analytics/analytics/dpm_analytics.hpp"
++#include "hailo_postprocess_tools/labels/coco_eighty.hpp"
+ #include "common/logger_macros.hpp"
+ #include "hailo_analytics/analytics/common_configs.hpp"
+ #include "hailo_analytics/analytics/detection.hpp"
+@@ -146,33 +149,28 @@ void DetectionPipeline::build_pipeline()
+     WEBSERVER_LOG_INFO("AI stream ({}): {}x{}", DETECTION_AI_SINK, ai_width, ai_height);
+ 
+     const bool single_tile = is_single_tile_mode();
+-    tiling::tiling_detection_config_t tiling_cfg;
+-    tiling_cfg.tiling_config.input_width = ai_width;
+-    tiling_cfg.tiling_config.input_height = ai_height;
+-    tiling_cfg.tiling_config.crop_every_x_frames = get_crop_every_x_frames();
+-    if (single_tile)
+-    {
+-        tiling_cfg.tiling_config.bbox_tiles = SINGLE_TILE_LAYOUT;
+-        tiling_cfg.tiling_config.output_width = ai_width;
+-        tiling_cfg.tiling_config.output_height = ai_height;
+-        tiling_cfg.detection_config.ai_config.batch_size = 1;
+-        tiling_cfg.detection_config.ai_config.scheduler_threshold = 1;
+-        tiling_cfg.aggregator_config.multi_scale = false;
+-    }
+-    else
+-    {
+-        tiling_cfg.detection_config.ai_config.batch_size = 5;
+-        tiling_cfg.detection_config.ai_config.scheduler_threshold = 5;
++    // Reuse DPM's detector/tracker configuration, without its segmentation/masks.
++    namespace dpm = hailo_analytics::analytics::dpm_analytics;
++    auto dpm_cfg = dpm::base_config();
++    dpm_cfg.merge_from(dpm::build_dpm_config(ai_width, ai_height,
++                                           dpm::DEFAULT_MAX_DETECTIONS_15L, {"person"}));
++    auto tiling_cfg = dpm_cfg.tiling_config;
++    tiling_cfg.tiling_config.output_width = 640;
++    tiling_cfg.tiling_config.output_height = 640;
++    tiling_cfg.detection_config.ai_config.hef_path = "/opt/hailo-yolo11/models/yolov11s_hailo15l_v5.3.0.hef";
++    tiling_cfg.detection_config.post_config.so_path = "/usr/lib/hailo-post-processes/libyolo_hailortpp_post.so";
++    tiling_cfg.detection_config.post_config.function_name = "filter";
++    tiling_cfg.detection_config.post_config.config_path = "/opt/hailo-yolo11/coco-postprocess.json";
++    tiling_cfg.tracker_config.labels_map = ::common::coco_eighty;
++    if (const char *floor=std::getenv("GARUDA_LOW_SCORE"); floor && std::string(floor)=="1") {
++        tiling_cfg.detection_config.ai_config.nms_score_threshold=0.15f;
++        tiling_cfg.detection_config.post_config.config_path="/opt/hailo-experiment/r2/coco-low.json";
++        tiling_cfg.tracker_config.add_threshold=0.50f;
++        tiling_cfg.tracker_config.class_aware_tracking=true;
++        WEBSERVER_LOG_INFO("Garuda experiment: candidate floor 0.15, birth 0.50, class-aware association");
+     }
+-    tiling_cfg.detection_config.ai_config.scheduler_timeout = std::chrono::milliseconds(50);
+-
+-    ai_models::apply_to(ai_models::YOLOV8S, tiling_cfg.detection_config);
+-
+-    // Enable detection tracker inside the tiling pipeline
+-    tiling_cfg.tracker_config.enabled = true;
+-    tiling_cfg.tracker_config.queue_size = 1;
+-    tiling_cfg.tracker_config.trace = false;
+-    tiling_cfg.tracker_config.labels_map = ::common::hailo_yolov8n;
++    WEBSERVER_LOG_INFO("Phone baseline: YOLO11s detector {} with stock Hailo tracker; no segmentation or masks",
++                       tiling_cfg.detection_config.ai_config.hef_path.value());
+ 
+     auto ai_pipeline_result =
+         tiling::generate_tiling_detection_pipeline(std::string(DETECTION_AI_PIPELINE), tiling_cfg);
+@@ -199,6 +197,23 @@ void DetectionPipeline::build_pipeline()
+     }
+ 
+     // Build webserver-specific stages
++    // Keep all COCO tracks visible; selection filtering belongs to the project UI.
++    auto person_filter = std::make_shared<CallbackStage>(
++        "person_filter", 5, false, [](hailo_analytics::pipeline::BufferPtr) {});
++    // Stock UI renders classifications but not numeric tracking_id fields.
++    // Add a display-only caption after tracking; keep class labels and IDs intact.
++    auto id_caption = std::make_shared<CallbackStage>(
++        "id_caption", 1, false, [](hailo_analytics::pipeline::BufferPtr buf) {
++            for (const auto &det : hailo_common::get_hailo_detections(buf->get_roi()))
++            {
++                for (const auto &cls : hailo_common::get_hailo_classifications(det))
++                    if (cls->get_classification_type() == "Track ID")
++                        det->remove_object(cls);
++                for (const auto &id : hailo_common::get_hailo_unique_id_by_mode(det, TRACKING_ID))
++                    det->add_object(std::make_shared<HailoClassification>(
++                        "Track ID", std::to_string(id->get_id()), 0.0f));
++            }
++        });
+     m_app_resources->valve_stage = std::make_shared<ValveStage>("valve", 1);
+ 
+     std::shared_ptr<AppSinkStage> main_sink_stage =
+@@ -237,6 +252,8 @@ void DetectionPipeline::build_pipeline()
+             .add_stage("valve", m_app_resources->valve_stage)
+             .add_stage(ai_pipeline)
+             .add_stage(std::string(AGGREGATOR_STAGE), aggregator_stage)
++            .add_stage("person_filter", person_filter)
++            .add_stage("id_caption", id_caption)
+             .add_stage(detections_db_stage, hailo_analytics::pipeline::StageType::SINK)
+             .add_stage("encoder", configure_encoder_and_osd(DEFAULT_STREAM_4K_NAME),
+                        hailo_analytics::pipeline::StageType::SINK)
+@@ -250,7 +267,9 @@ void DetectionPipeline::build_pipeline()
+             // AI pipeline (with tracker) output → aggregator
+             .connect(std::string(DETECTION_AI_PIPELINE), std::string(AGGREGATOR_STAGE))
+             // Aggregator → output
+-            .connect(std::string(AGGREGATOR_STAGE), "metadata_tee")
++            .connect(std::string(AGGREGATOR_STAGE), "person_filter")
++            .connect("person_filter", "id_caption")
++            .connect("id_caption", "metadata_tee")
+             .connect("metadata_tee", DETECTIONS_DB_STAGE)
+             .connect("metadata_tee", "valve")
+             .connect("valve", "encoder")
+@@ -276,13 +295,8 @@ void DetectionPipeline::start()
+ 
+ bool DetectionPipeline::is_single_tile_mode() const
+ {
+-    const auto sensor_type = webserver::common::get_sensor_type();
+-    const bool sensor_match = sensor_type == webserver::common::SensorModel::SENSOR_IMX678 ||
+-                              sensor_type == webserver::common::SensorModel::SENSOR_IMX675 ||
+-                              sensor_type == webserver::common::SensorModel::SENSOR_IMX662;
+-    const bool profile_match =
+-        m_current_profile_type == ProfileType::AiIspGen3 || m_current_profile_type == ProfileType::AiIspGen3_1;
+-    return m_app_resources->platform == Architecture::Hailo15L && sensor_match && profile_match;
++    // Match DPM's five-tile layout and every-other-frame detection across profiles.
++    return false;
+ }
+ 
+ size_t DetectionPipeline::get_crop_every_x_frames() const
+diff --git a/hailo-analytics/apps/webserver/resources/webpage.cpp b/hailo-analytics/apps/webserver/resources/webpage.cpp
+index 99b936b..e961e0e 100644
+--- a/hailo-analytics/apps/webserver/resources/webpage.cpp
++++ b/hailo-analytics/apps/webserver/resources/webpage.cpp
+@@ -2,7 +2,7 @@
+ 
+ #include "resources/common/resources.hpp"
+ 
+-#define WEBPAGE_BUNDLE_PATH "/usr/share/hailo/webpage"
++#define WEBPAGE_BUNDLE_PATH "/opt/hailo-diagnostics/r1/webpage"
+ 
+ std::string webserver::resources::WebpageResource::name()
+ {
+diff --git a/hailo-analytics/hailo_analytics_api/include/hailo_analytics/pipeline/cropping/dsp_cropping.hpp b/hailo-analytics/hailo_analytics_api/include/hailo_analytics/pipeline/cropping/dsp_cropping.hpp
+index f922c8a..2a1270f 100644
+--- a/hailo-analytics/hailo_analytics_api/include/hailo_analytics/pipeline/cropping/dsp_cropping.hpp
++++ b/hailo-analytics/hailo_analytics_api/include/hailo_analytics/pipeline/cropping/dsp_cropping.hpp
+@@ -73,6 +73,7 @@ class DspBaseCropStage : public hailo_analytics::pipeline::ThreadedStage
+     int m_crop_every_x_frames;         // Crop every n frames (default 1)
+     int m_frame_counter;               // Internal frame counter
+     dsp_scaling_mode_t m_scaling_mode; // Scaling mode (letterbox or stretch)
++    bool m_garuda_letterbox = false; // Private, opt-in detection experiment only
+     dsp_color_t m_letterbox_color;     // Letterbox padding color
+     bool m_release_input_after_dsp;    // Release source FHD buffer after DSP crop completes
+ 
+diff --git a/hailo-analytics/hailo_analytics_api/src/pipeline/ai/detection_tracker_stage.cpp b/hailo-analytics/hailo_analytics_api/src/pipeline/ai/detection_tracker_stage.cpp
+index 29e86b4..61c7268 100644
+--- a/hailo-analytics/hailo_analytics_api/src/pipeline/ai/detection_tracker_stage.cpp
++++ b/hailo-analytics/hailo_analytics_api/src/pipeline/ai/detection_tracker_stage.cpp
+@@ -14,6 +14,7 @@
+ #include <utility>
+ #include <vector>
+ #include <algorithm>
++#include <nlohmann/json.hpp>
+ 
+ #include "hailo_analytics/logger/hailo_analytics_logger.hpp"
+ #include "hailo_analytics/pipeline/ai/detection_tracker_stage.hpp"
+@@ -202,6 +203,17 @@ AppStatus DetectionTrackerStage::update_tracker_from_roi_detections(HailoROIPtr
+ AppStatus DetectionTrackerStage::process(BufferPtr data)
+ {
+     HailoROIPtr hailo_roi = data->get_roi();
++    const bool measured = !data->get_metadata_of_type(MetadataType::TENSOR).empty();
++    nlohmann::json diagnostics = {{"v", 1}, {"detector_ran", measured},
++        {"source_timestamp_ns", std::to_string(data->get_buffer()->isp_timestamp_ns)},
++        {"raw", nlohmann::json::array()}};
++    if (measured)
++        for (const auto &det : hailo_common::get_hailo_detections(hailo_roi))
++        {
++            const auto b = det->get_bbox();
++            diagnostics["raw"].push_back({{"label", det->get_label()}, {"conf", det->get_confidence()},
++                {"x", b.xmin()}, {"y", b.ymin()}, {"w", b.width()}, {"h", b.height()}});
++        }
+ 
+     hailo_tracklets_t tracklets = {};
+     AppStatus predict_status = predict_tracklets(tracklets);
+@@ -222,6 +234,8 @@ AppStatus DetectionTrackerStage::process(BufferPtr data)
+ 
+     auto online_detection_ptrs = tracklets_to_hailo_detections(tracklets);
+     hailo_common::add_detection_pointers(hailo_roi, online_detection_ptrs);
++    hailo_roi->add_object(std::make_shared<HailoClassification>(
++        "GarudaDiagnostics", diagnostics.dump(), 0.0f));
+ 
+     m_frame_counter++;
+     if (m_save_mot_output && m_mot_file.is_open())
+diff --git a/hailo-analytics/hailo_analytics_api/src/pipeline/ai/postprocess_stage.cpp b/hailo-analytics/hailo_analytics_api/src/pipeline/ai/postprocess_stage.cpp
+index c7982e8..0e30266 100644
+--- a/hailo-analytics/hailo_analytics_api/src/pipeline/ai/postprocess_stage.cpp
++++ b/hailo-analytics/hailo_analytics_api/src/pipeline/ai/postprocess_stage.cpp
+@@ -1,4 +1,7 @@
+ #include <dlfcn.h>
++#include <nlohmann/json.hpp>
++#include <hailo_postprocess_tools/objects/hailo_common.hpp>
++#include "hailo_analytics/pipeline/cropping/garuda_letterbox.hpp"
+ #include <stddef.h>
+ #include <hailo_postprocess_tools/objects/hailo_objects.hpp>
+ #include <memory>
+@@ -132,6 +135,17 @@ AppStatus PostprocessStage::process(BufferPtr data)
+         m_handler_no_config(hailo_roi);
+     }
+ 
++    for (const auto &tag : hailo_common::get_hailo_classifications(hailo_roi)) {
++        if (tag->get_classification_type() != "GarudaLetterbox") continue;
++        auto content=nlohmann::json::parse(tag->get_label()).get<std::array<double,4>>();
++        for (const auto &det : hailo_common::get_hailo_detections(hailo_roi)) {
++            const auto b=det->get_bbox();
++            const auto mapped=garuda_experiment::undo_letterbox({b.xmin(),b.ymin(),b.xmax(),b.ymax()},content);
++            if(mapped[2]<=mapped[0]||mapped[3]<=mapped[1]) hailo_roi->remove_object(det);
++            else det->set_bbox(HailoBBox(mapped[0],mapped[1],mapped[2]-mapped[0],mapped[3]-mapped[1]));
++        }
++        hailo_roi->remove_object(tag);
++    }
+     // Push the buffer to the next stage
+     send_to_subscribers(data);
+ 
+diff --git a/hailo-analytics/hailo_analytics_api/src/pipeline/codecs/analytic_metadata_packager_stage.cpp b/hailo-analytics/hailo_analytics_api/src/pipeline/codecs/analytic_metadata_packager_stage.cpp
+index 63a5108..dea0b50 100644
+--- a/hailo-analytics/hailo_analytics_api/src/pipeline/codecs/analytic_metadata_packager_stage.cpp
++++ b/hailo-analytics/hailo_analytics_api/src/pipeline/codecs/analytic_metadata_packager_stage.cpp
+@@ -246,6 +246,8 @@ void populate_objects_recursive(HailoROIPtr roi, const HailoBBox &parent_bbox, u
+         }
+         case HAILO_CLASSIFICATION: {
+             auto classification = std::dynamic_pointer_cast<HailoClassification>(obj);
++            if (classification->get_classification_type() == "GarudaDiagnostics")
++                break;
+             populate_classification(classification, parent);
+             break;
+         }
+@@ -269,8 +271,7 @@ bool build_metadata_proto(BufferPtr data, hailo_analytics::Frame &frame)
+ 
+     populate_objects_recursive(roi, roi->get_bbox(), native_width, native_height, frame, /*cache=*/nullptr);
+ 
+-    if (frame.detections_size() == 0 && frame.landmarks_size() == 0 && frame.classifications_size() == 0)
+-        return false;
++    // Empty frames are valid observations, not missing transport.
+ 
+     frame.set_isp_timestamp_ns(data->get_buffer()->isp_timestamp_ns);
+     frame.set_frame_width(native_width);
+@@ -290,8 +291,7 @@ bool build_metadata_proto(BufferPtr data, hailo_analytics::Frame &frame, Landmar
+     populate_objects_recursive(roi, roi->get_bbox(), native_width, native_height, frame, &cache);
+     cache.advance_frame();
+ 
+-    if (frame.detections_size() == 0 && frame.landmarks_size() == 0 && frame.classifications_size() == 0)
+-        return false;
++    // Empty frames are valid observations, not missing transport.
+ 
+     frame.set_isp_timestamp_ns(data->get_buffer()->isp_timestamp_ns);
+     frame.set_frame_width(native_width);
+@@ -310,6 +310,9 @@ AppStatus AnalyticMetadataPackagerStage::process(BufferPtr data)
+     hailo_analytics::Frame frame;
+     if (!build_metadata_proto(data, frame, m_landmarks_cache))
+         return AppStatus::SUCCESS;
++    for (const auto &cls : hailo_common::get_hailo_classifications(data->get_roi()))
++        if (cls->get_classification_type() == "GarudaDiagnostics")
++            frame.set_garuda_diagnostics_json(cls->get_label());
+ 
+     std::string serialized;
+     if (!frame.SerializeToString(&serialized))
+diff --git a/hailo-analytics/hailo_analytics_api/src/pipeline/codecs/protos/analytics_metadata.proto b/hailo-analytics/hailo_analytics_api/src/pipeline/codecs/protos/analytics_metadata.proto
+index 184b357..27e0cc4 100644
+--- a/hailo-analytics/hailo_analytics_api/src/pipeline/codecs/protos/analytics_metadata.proto
++++ b/hailo-analytics/hailo_analytics_api/src/pipeline/codecs/protos/analytics_metadata.proto
+@@ -50,4 +50,7 @@ message Frame {
+     repeated Detection      detections      = 4;
+     repeated Landmarks      landmarks       = 5;
+     repeated Classification classifications = 6;
++    // Private Garuda diagnostics, JSON with normalized pre-tracker detections.
++    // Additive field: stock clients safely ignore it.
++    string garuda_diagnostics_json = 7;
+ }
+diff --git a/hailo-analytics/hailo_analytics_api/src/pipeline/cropping/aggregator_stage.cpp b/hailo-analytics/hailo_analytics_api/src/pipeline/cropping/aggregator_stage.cpp
+index 31c7de9..31694d7 100644
+--- a/hailo-analytics/hailo_analytics_api/src/pipeline/cropping/aggregator_stage.cpp
++++ b/hailo-analytics/hailo_analytics_api/src/pipeline/cropping/aggregator_stage.cpp
+@@ -181,6 +181,11 @@ void AggregatorStage::migrate_metadata(BufferPtr main_buffer, std::vector<Buffer
+     for (size_t i = 0; i < subframes.size(); i++)
+     {
+         BufferPtr subframe = subframes[i];
++        // Diagnostics are normalized to the full AI image after inner tile merging.
++        // Carry them through the outer full-frame merge without NMS or classification rendering.
++        for (const auto &cls : hailo_common::get_hailo_classifications(subframe->get_roi()))
++            if (cls->get_classification_type() == "GarudaDiagnostics")
++                main_buffer->get_roi()->add_object(cls);
+ 
+         if (m_copy_sub_frame_tensor_to_metadata)
+         {
+diff --git a/hailo-analytics/hailo_analytics_api/src/pipeline/cropping/dsp_cropping.cpp b/hailo-analytics/hailo_analytics_api/src/pipeline/cropping/dsp_cropping.cpp
+index a20b9e7..8e50a77 100644
+--- a/hailo-analytics/hailo_analytics_api/src/pipeline/cropping/dsp_cropping.cpp
++++ b/hailo-analytics/hailo_analytics_api/src/pipeline/cropping/dsp_cropping.cpp
+@@ -1,4 +1,6 @@
+ #include <hailodsp.h>
++#include <nlohmann/json.hpp>
++#include "hailo_analytics/pipeline/cropping/garuda_letterbox.hpp"
+ #include <hailodsp_base.h>
+ #include <hailo_postprocess_tools/objects/hailo_objects.hpp>
+ #include <media_library/buffer_pool.hpp>
+@@ -189,6 +191,9 @@ AppStatus DspBaseCropStage::process(BufferPtr data)
+         }
+ 
+         auto &dims = crop_resize_dims[i];
++        if (m_garuda_letterbox)
++            garuda_experiment::letterbox_content(dims.end_x-dims.start_x,dims.end_y-dims.start_y,
++                m_output_width,m_output_height);
+ 
+         HailoMediaLibraryBufferPtr cropped_buffer = std::make_shared<hailo_media_library_buffer>();
+         if (m_buffer_pool->acquire_buffer(cropped_buffer) != MEDIA_LIBRARY_SUCCESS)
+@@ -264,6 +269,17 @@ AppStatus DspBaseCropStage::process(BufferPtr data)
+         // Set the ROI of the cropped buffer to the scale of the parent ROI
+         // Note, this will make overlay incorrect if the bboxes are not flattened
+         cropped_buffer_ptr->get_roi()->set_scaling_bbox(get_crop_bbox(i));
++        if (m_garuda_letterbox) {
++            const auto &crop=crop_resize_dims[i];
++            auto content=garuda_experiment::letterbox_content(crop.end_x-crop.start_x,
++                crop.end_y-crop.start_y,m_output_width,m_output_height);
++            // Exact rounded crop geometry, not the requested fractional tile.
++            cropped_buffer_ptr->get_roi()->set_scaling_bbox(HailoBBox(
++                double(crop.start_x)/in_buffer_data.properties.width,double(crop.start_y)/in_buffer_data.properties.height,
++                double(crop.end_x-crop.start_x)/in_buffer_data.properties.width,double(crop.end_y-crop.start_y)/in_buffer_data.properties.height));
++            cropped_buffer_ptr->get_roi()->add_object(std::make_shared<HailoClassification>(
++                "GarudaLetterbox",nlohmann::json(content).dump(),0.0f));
++        }
+         cropped_buffer_ptr->get_buffer()->isp_timestamp_ns = data->get_buffer()->isp_timestamp_ns;
+ 
+         send_to_specific_subscriber(m_sub_subscriber, cropped_buffer_ptr);
+diff --git a/hailo-analytics/hailo_analytics_api/src/pipeline/cropping/tiling_stage.cpp b/hailo-analytics/hailo_analytics_api/src/pipeline/cropping/tiling_stage.cpp
+index f031988..a977ded 100644
+--- a/hailo-analytics/hailo_analytics_api/src/pipeline/cropping/tiling_stage.cpp
++++ b/hailo-analytics/hailo_analytics_api/src/pipeline/cropping/tiling_stage.cpp
+@@ -5,6 +5,7 @@
+ #include <media_library/media_library_buffer.hpp>
+ #include <media_library/media_library_types.hpp>
+ #include <cstddef>
++#include <cstdlib>
+ #include <memory>
+ #include <mutex>
+ #include <optional>
+@@ -31,6 +32,11 @@ TilingCropStage::TilingCropStage(std::string name, int output_pool_size, int inp
+                        sub_sub_name, queue_size, leaky, trace_processing_operations, pool_mode, crop_every_x_frames),
+       m_bbox_tiles(bbox_tiles)
+ {
++    if (const char *mode = std::getenv("GARUDA_LETTERBOX"); mode && std::string(mode)=="1") {
++        m_scaling_mode = DSP_SCALING_MODE_LETTERBOX_MIDDLE;
++        m_garuda_letterbox = true;
++        m_letterbox_color.y=114; m_letterbox_color.u=128; m_letterbox_color.v=128;
++    }
+ }
+ 
+ AppStatus TilingCropStage::init()
+diff --git a/hailo-analytics/hailo_analytics_api/src/pipeline/sinks/udp_stage.cpp b/hailo-analytics/hailo_analytics_api/src/pipeline/sinks/udp_stage.cpp
+index 1b82055..2e23dda 100644
+--- a/hailo-analytics/hailo_analytics_api/src/pipeline/sinks/udp_stage.cpp
++++ b/hailo-analytics/hailo_analytics_api/src/pipeline/sinks/udp_stage.cpp
+@@ -1,5 +1,6 @@
+ // General includes
+ #include <stddef.h>
++#include "hailo_analytics/pipeline/sinks/garuda_record.hpp"
+ #include <tl/expected.hpp>
+ #include <memory>
+ #include <optional>
+@@ -88,6 +89,10 @@ AppStatus UdpStage::process(BufferPtr data)
+     hailo_analytics::pipeline::SizeMetadataPtr size_metadata =
+         std::dynamic_pointer_cast<hailo_analytics::pipeline::SizeMetadata>(metadata[0]);
+     size_t size = size_metadata->get_size();
++    if (m_stage_name == "sink0_udp") {
++        static garuda_experiment::Recorder recorder;
++        recorder.append(data->get_buffer(),size);
++    }
+     m_udp->add_buffer(data->get_buffer(), size);
+ 
+     return AppStatus::SUCCESS;
+diff --git a/hailo-analytics/hailo_analytics_api/include/hailo_analytics/pipeline/cropping/garuda_letterbox.hpp b/hailo-analytics/hailo_analytics_api/include/hailo_analytics/pipeline/cropping/garuda_letterbox.hpp
+new file mode 100644
+index 0000000..203c494
+--- /dev/null
++++ b/hailo-analytics/hailo_analytics_api/include/hailo_analytics/pipeline/cropping/garuda_letterbox.hpp
+@@ -0,0 +1,26 @@
++#pragma once
++#include <algorithm>
++#include <array>
++#include <cmath>
++#include <stdexcept>
++
++namespace garuda_experiment {
++// Fail closed for unvalidated DSP rounding cases. Current 16:9 and square
++// layouts produce exact even content and even centered padding at 640x640.
++inline std::array<double,4> letterbox_content(int sw,int sh,int dw,int dh) {
++    if(sw<=0||sh<=0||dw<=0||dh<=0) throw std::invalid_argument("invalid letterbox dimensions");
++    const double scale=std::min(double(dw)/sw,double(dh)/sh);
++    const double w=sw*scale,h=sh*scale,x=(dw-w)/2,y=(dh-h)/2;
++    for(double n:{w,h,x,y})
++        if(std::abs(n/2-std::round(n/2))>1e-6)
++            throw std::invalid_argument("unvalidated DSP letterbox rounding");
++    return {x/dw,y/dh,w/dw,h/dh};
++}
++inline std::array<double,4> undo_letterbox(std::array<double,4> box,
++                                         const std::array<double,4>& content) {
++    return {std::clamp((box[0]-content[0])/content[2],0.0,1.0),
++            std::clamp((box[1]-content[1])/content[3],0.0,1.0),
++            std::clamp((box[2]-content[0])/content[2],0.0,1.0),
++            std::clamp((box[3]-content[1])/content[3],0.0,1.0)};
++}
++}
+diff --git a/hailo-analytics/hailo_analytics_api/include/hailo_analytics/pipeline/sinks/garuda_record.hpp b/hailo-analytics/hailo_analytics_api/include/hailo_analytics/pipeline/sinks/garuda_record.hpp
+new file mode 100644
+index 0000000..34c78ca
+--- /dev/null
++++ b/hailo-analytics/hailo_analytics_api/include/hailo_analytics/pipeline/sinks/garuda_record.hpp
+@@ -0,0 +1,44 @@
++#pragma once
++#include <cstdio>
++#include <cstdlib>
++#include <unistd.h>
++#include <sys/statvfs.h>
++#include <media_library/buffer_pool.hpp>
++
++namespace garuda_experiment {
++// Diagnostic only: encoded access units plus their exact source timestamps.
++// Up to 900 frames / 64 MiB per request; two captures per process. No overwrite.
++// Synchronous writes can affect timing: measure and report capture cadence.
++class Recorder {
++    FILE *video=nullptr,*index=nullptr;
++    size_t bytes=0,frames=0,runs=0,polls=0;
++    void finish(const char* reason){
++        if(index) {std::fprintf(index,"{\"end\":true,\"frames\":%zu,\"bytes\":%zu,\"reason\":\"%s\"}\n",frames,bytes,reason);std::fclose(index);index=nullptr;}
++        if(video){std::fclose(video);video=nullptr;}
++    }
++public:
++    ~Recorder(){finish("shutdown");}
++    void append(HailoMediaLibraryBufferPtr buffer,size_t size){
++        if(!video){
++            if(runs>=2 || ++polls%30 || !std::getenv("GARUDA_RECORD_ENABLE"))return;
++            if(access("/tmp/garuda-r2-record.request",F_OK))return;
++            struct statvfs space{};
++            if(statvfs("/tmp",&space)||space.f_bavail*space.f_frsize<256ULL*1024*1024)return;
++            char folder[]="/tmp/garuda-r2-record.XXXXXX";
++            if(!mkdtemp(folder))return;
++            video=std::fopen((std::string(folder)+"/video.h264").c_str(),"wbx");
++            index=std::fopen((std::string(folder)+"/frames.jsonl").c_str(),"wx");
++            if(!video||!index){finish("open_error");return;}
++            unlink("/tmp/garuda-r2-record.request");++runs;bytes=frames=0;
++            std::fprintf(stderr,"GARUDA_RECORD_STARTED %s\n",folder);
++        }
++        if(bytes+size>64ULL*1024*1024){finish("byte_limit");return;}
++        if(!buffer->isp_timestamp_ns||size>buffer->get_plane_size(0)) {finish("invalid_frame");return;}
++        if(std::fwrite(buffer->get_plane_ptr(0),1,size,video)!=size){finish("write_error");return;}
++        if(std::fprintf(index,"{\"frame\":%zu,\"offset\":%zu,\"bytes\":%zu,\"source_timestamp_ns\":\"%llu\"}\n",
++            frames,bytes,size,(unsigned long long)buffer->isp_timestamp_ns)<0){finish("index_error");return;}
++        bytes+=size;++frames;
++        if(frames>=900)finish("frame_limit");
++    }
++};
++}

@@ -1,0 +1,9 @@
+Controller reproduction of the shim short-read bug — 2026-09-02, PC side against the live board node.
+Command: ssh -f -N -L 18971:127.0.0.1:8971 root@10.0.0.1 ; python3 script mirroring the shim's reader
+  (socket.create_connection(("127.0.0.1", 18971), timeout=5); s.settimeout(5.0); recv(1, MSG_WAITALL); recv(4, MSG_WAITALL);
+   recv(ln, MSG_WAITALL); compare len(p) != ln) and, second pass, a blocking socket (settimeout(None)) counting frames for 10 s.
+Verbatim output:
+SHORT READ: type=b'J' expected=129061 got=65531
+A) timeout+MSG_WAITALL: frames ok 4 {b'S': 4} short reads 1
+B) blocking: 10 s S=298 J=138; J inter-arrival ms sample=[66, 98, 68, 66, 67, 100, 67, 67, 67, 67, 66, 65] min=63
+Conditions: node commit 4ebd020 running as the init.d service, shim connected (broken reader), IMX678 live, scene = store room (no model classes in view).

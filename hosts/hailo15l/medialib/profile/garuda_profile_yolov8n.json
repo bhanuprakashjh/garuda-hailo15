@@ -1,0 +1,14 @@
+{
+  "version": "1.0.0",
+  "metadata": {
+    "architecture": "hailo15l",
+    "content_hash": "",
+    "description": "garuda-perception M2 rollback profile",
+    "generation_timestamp": ""
+  },
+  "application_settings": "/opt/garuda/medialib/profile/application_settings_yolov8n.json",
+  "encoded_output_streams": [],
+  "iq_settings": "/etc/imaging/cfg/hailo15l/imx678/theia_sl410m/4k/profiles/daylight/detection_daylight/iq_settings.json",
+  "sensor_config": "/etc/imaging/cfg/hailo15l/imx678/theia_sl410m/4k/profiles/daylight/detection_daylight/sensor_config.json",
+  "stabilizer_settings": "/etc/imaging/cfg/hailo15l/imx678/theia_sl410m/4k/profiles/daylight/detection_daylight/stabilizer_settings.json"
+}

@@ -1,0 +1,134 @@
+M2 yolo26m detector — SSE tally over the 10-minute capture
+Capture: curl -s -m 600 -o /tmp/claude-1000/-media-bhanu1234-Development-GARUDASDK/2a21f19e-5fb6-4e5f-9942-59eeea5039f4/scratchpad/m2-bench/sse600.txt http://10.0.0.1:8098/api/events
+Capture window: 2026-09-03 08:20:23 UTC (curl launch, PC clock) through the process exiting on its
+own -m 600 timeout, confirmed gone from `ps -ef` by 08:30:37 UTC.
+Raw capture NOT committed (10,918,303 bytes); left at
+/tmp/claude-1000/-media-bhanu1234-Development-GARUDASDK/2a21f19e-5fb6-4e5f-9942-59eeea5039f4/scratchpad/m2-bench/sse600.txt
+on this machine, per instructions (scratchpad only, never committed).
+
+Extended tally script (tally_sse_m2.py, extends M1's tally_sse.py with distinct-labels and
+frames-with->=2-tracks counters), run as: python3 tally_sse_m2.py sse600.txt
+
+--- script source ---
+import json, sys
+
+path = sys.argv[1]
+n_data = 0
+n_tracks_nonempty = 0
+n_coasting = 0
+n_multi = 0  # frames with >=2 tracks
+lock_ids = set()
+labels_seen = set()
+first5 = []
+last5 = []
+ages = []
+
+with open(path, "rb") as f:
+    for raw in f:
+        if not raw.startswith(b"data: "):
+            continue
+        n_data += 1
+        line = raw[6:].strip()
+        if len(first5) < 5:
+            first5.append(line.decode("utf-8", "replace"))
+        last5.append(line.decode("utf-8", "replace"))
+        if len(last5) > 5:
+            last5.pop(0)
+        try:
+            obj = json.loads(line)
+        except Exception as e:
+            print(f"PARSE ERROR on data line {n_data}: {e}")
+            continue
+        tracks = obj.get("tracks", [])
+        if tracks:
+            n_tracks_nonempty += 1
+        if len(tracks) >= 2:
+            n_multi += 1
+        for tr in tracks:
+            lab = tr.get("label")
+            if lab is not None:
+                labels_seen.add(lab)
+        lock = obj.get("lock", {})
+        if lock.get("coasting") is True:
+            n_coasting += 1
+        lid = lock.get("id")
+        if lid is not None:
+            lock_ids.add(lid)
+        age = obj.get("age_ms")
+        if age is not None:
+            ages.append(age)
+
+print(f"total data: lines = {n_data}")
+print(f"frames with non-empty tracks = {n_tracks_nonempty}")
+print(f"frames with >=2 tracks = {n_multi}")
+print(f"frames with lock.coasting == true = {n_coasting}")
+print(f"distinct lock.id values seen = {sorted(lock_ids)}")
+print(f"distinct labels seen across all tracks = {sorted(labels_seen)}")
+if ages:
+    ages_sorted = sorted(ages)
+    print(f"age_ms count={len(ages_sorted)} min={ages_sorted[0]} max={ages_sorted[-1]}")
+
+print("\n--- first 5 data lines ---")
+for l in first5:
+    print(l)
+print("\n--- last 5 data lines ---")
+for l in last5:
+    print(l)
+
+--- script output (verbatim) ---
+total data: lines = 5969
+frames with non-empty tracks = 5969
+frames with >=2 tracks = 5969
+frames with lock.coasting == true = 0
+distinct lock.id values seen = [1]
+distinct labels seen across all tracks = ['book', 'cell phone', 'chair', 'person', 'refrigerator', 'suitcase']
+age_ms count=5969 min=836 max=892
+
+--- first 5 data lines ---
+{"age_ms":858,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":1},"tracks":[{"coasting":false,"conf":0.9690130352973938,"h":712.2039794921875,"id":1,"label":"person","w":684.4503173828125,"x":593.4647216796875,"y":3.083465576171875},{"coasting":false,"conf":0.47749319672584534,"h":118.54582977294922,"id":2,"label":"book","w":37.065284729003906,"x":136.53036499023438,"y":153.29437255859375},{"coasting":false,"conf":0.5353596806526184,"h":144.57089233398438,"id":3,"label":"book","w":48.8477897644043,"x":64.33621978759766,"y":113.18424224853516},{"coasting":false,"conf":0.19517119228839874,"h":177.90960693359375,"id":4,"label":"suitcase","w":94.38877868652344,"x":540.6383056640625,"y":218.23004150390625},{"coasting":false,"conf":0.32605451345443726,"h":111.80152130126953,"id":5,"label":"book","w":37.34288024902344,"x":157.74200439453125,"y":167.09254455566406},{"coasting":false,"conf":0.3914957642555237,"h":130.13543701171875,"id":42,"label":"book","w":33.9549560546875,"x":119.57771301269531,"y":136.62603759765625},{"coasting":false,"conf":0.3169623017311096,"h":133.8955841064453,"id":43,"label":"book","w":31.582778930664063,"x":102.78278350830078,"y":129.95114135742188},{"coasting":false,"conf":0.24201500415802002,"h":591.8748168945313,"id":44,"label":"refrigerator","w":280.7299499511719,"x":276.85162353515625,"y":83.25918579101563},{"coasting":false,"conf":0.2759850323200226,"h":277.802490234375,"id":49,"label":"chair","w":289.6643371582031,"x":663.2848510742188,"y":237.81968688964844}],"v":2}
+{"age_ms":862,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":1},"tracks":[{"coasting":false,"conf":0.9717051386833191,"h":710.6832275390625,"id":1,"label":"person","w":675.2117919921875,"x":603.3115234375,"y":4.68023681640625},{"coasting":false,"conf":0.42034444212913513,"h":119.37860870361328,"id":2,"label":"book","w":37.95485305786133,"x":135.93101501464844,"y":152.6761016845703},{"coasting":false,"conf":0.5183570384979248,"h":147.1041717529297,"id":3,"label":"book","w":49.60197067260742,"x":63.988136291503906,"y":110.3802261352539},{"coasting":false,"conf":0.21043552458286285,"h":177.98695373535156,"id":4,"label":"suitcase","w":93.28651428222656,"x":541.2377319335938,"y":218.5587921142578},{"coasting":false,"conf":0.3422066271305084,"h":113.92764282226563,"id":5,"label":"book","w":37.4185905456543,"x":157.50225830078125,"y":165.17462158203125},{"coasting":false,"conf":0.3293129801750183,"h":132.02813720703125,"id":42,"label":"book","w":34.308258056640625,"x":119.07929992675781,"y":135.4525604248047},{"coasting":false,"conf":0.37308233976364136,"h":134.028076171875,"id":43,"label":"book","w":32.182132720947266,"x":102.99098205566406,"y":129.5536651611328},{"coasting":false,"conf":0.17703546583652496,"h":544.2754516601563,"id":44,"label":"refrigerator","w":281.03411865234375,"x":276.737548828125,"y":83.44927978515625},{"coasting":false,"conf":0.33548516035079956,"h":275.8635559082031,"id":49,"label":"chair","w":290.1205749511719,"x":663.1328125,"y":237.78167724609375}],"v":2}
+{"age_ms":868,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":1},"tracks":[{"coasting":false,"conf":0.9687841534614563,"h":709.0484008789063,"id":1,"label":"person","w":683.8040161132813,"x":594.6813354492188,"y":5.288543701171875},{"coasting":false,"conf":0.46075132489204407,"h":117.858154296875,"id":2,"label":"book","w":36.67412567138672,"x":136.01934814453125,"y":153.48995971679688},{"coasting":false,"conf":0.5294814109802246,"h":148.1097412109375,"id":3,"label":"book","w":49.77600860595703,"x":63.949462890625,"y":109.58736419677734},{"coasting":false,"conf":0.28105098009109497,"h":178.0449676513672,"id":4,"label":"suitcase","w":94.36943817138672,"x":540.79296875,"y":218.4427490234375},{"coasting":false,"conf":0.3379819095134735,"h":110.67221069335938,"id":5,"label":"book","w":37.27979278564453,"x":157.912353515625,"y":167.88748168945313},{"coasting":false,"conf":0.3331851363182068,"h":132.97447204589844,"id":42,"label":"book","w":35.0085563659668,"x":118.99728393554688,"y":134.86582946777344},{"coasting":false,"conf":0.3844717741012573,"h":135.4286651611328,"id":43,"label":"book","w":32.78779602050781,"x":102.77647399902344,"y":128.34864807128906},{"coasting":false,"conf":0.24155093729496002,"h":549.9022216796875,"id":44,"label":"refrigerator","w":281.1101379394531,"x":277.0417175292969,"y":83.22117614746094},{"coasting":false,"conf":0.2649969458580017,"h":277.2322082519531,"id":49,"label":"chair","w":290.61480712890625,"x":662.4864501953125,"y":237.93374633789063}],"v":2}
+{"age_ms":850,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":1},"tracks":[{"coasting":false,"conf":0.9698383212089539,"h":713.8007202148438,"id":1,"label":"person","w":680.6865234375,"x":597.53271484375,"y":0.6502685546875},{"coasting":false,"conf":0.29108384251594543,"h":120.23662567138672,"id":2,"label":"book","w":35.87919616699219,"x":136.47988891601563,"y":151.91943359375},{"coasting":false,"conf":0.4047597348690033,"h":146.5626983642578,"id":3,"label":"book","w":49.02183151245117,"x":64.51026153564453,"y":110.94103240966797},{"coasting":false,"conf":0.3236088454723358,"h":178.9731903076172,"id":4,"label":"suitcase","w":94.0213623046875,"x":541.0443725585938,"y":218.52011108398438},{"coasting":false,"conf":0.270985871553421,"h":113.17057037353516,"id":5,"label":"book","w":37.475372314453125,"x":157.59689331054688,"y":165.96324157714844},{"coasting":false,"conf":0.3422066271305084,"h":131.68743896484375,"id":42,"label":"book","w":33.443931579589844,"x":119.5335464477539,"y":135.87527465820313},{"coasting":false,"conf":0.26913049817085266,"h":133.90188598632813,"id":43,"label":"book","w":32.749942779541016,"x":102.80801391601563,"y":129.23190307617188},{"coasting":true,"conf":0.23877929151058197,"h":584.9553833007813,"id":44,"label":"refrigerator","w":280.6919250488281,"x":276.5474853515625,"y":83.33522033691406},{"coasting":false,"conf":0.31932181119918823,"h":277.49835205078125,"id":49,"label":"chair","w":289.81640625,"x":662.6004638671875,"y":237.78167724609375}],"v":2}
+{"age_ms":869,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":1},"tracks":[{"coasting":false,"conf":0.9670553207397461,"h":710.1509399414063,"id":1,"label":"person","w":682.0171508789063,"x":595.6317749023438,"y":4.490142822265625},{"coasting":false,"conf":0.4758160710334778,"h":119.93379211425781,"id":2,"label":"book","w":35.50065612792969,"x":136.41680908203125,"y":152.65127563476563},{"coasting":false,"conf":0.520321786403656,"h":146.52403259277344,"id":3,"label":"book","w":49.3119010925293,"x":64.56827545166016,"y":111.7725601196289},{"coasting":false,"conf":0.23778074979782104,"h":179.14724731445313,"id":4,"label":"suitcase","w":93.8279800415039,"x":540.9283447265625,"y":218.24937438964844},{"coasting":false,"conf":0.30514928698539734,"h":111.8772201538086,"id":5,"label":"book","w":36.32082748413086,"x":158.27195739746094,"y":168.07675170898438},{"coasting":false,"conf":0.3166712820529938,"h":131.76315307617188,"id":42,"label":"book","w":33.40607452392578,"x":120.15182495117188,"y":135.48452758789063},{"coasting":false,"conf":0.346152126789093,"h":134.9554901123047,"id":43,"label":"book","w":32.27045822143555,"x":102.51148986816406,"y":129.1688232421875},{"coasting":false,"conf":0.35088953375816345,"h":581.9519653320313,"id":44,"label":"refrigerator","w":281.22418212890625,"x":276.77557373046875,"y":82.61286926269531},{"coasting":false,"conf":0.2649969458580017,"h":278.0306091308594,"id":49,"label":"chair","w":291.22308349609375,"x":662.410400390625,"y":238.04779052734375}],"v":2}
+
+--- last 5 data lines ---
+{"age_ms":880,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":1},"tracks":[{"coasting":false,"conf":0.9720510244369507,"h":705.7027587890625,"id":1,"label":"person","w":638.6758422851563,"x":639.201171875,"y":6.353058338165283},{"coasting":false,"conf":0.19978666305541992,"h":125.01253509521484,"id":2,"label":"book","w":36.888633728027344,"x":138.42306518554688,"y":148.4053192138672},{"coasting":false,"conf":0.400972843170166,"h":147.8583526611328,"id":3,"label":"book","w":49.505279541015625,"x":67.73970794677734,"y":110.9990463256836},{"coasting":false,"conf":0.4849187731742859,"h":176.8653564453125,"id":4,"label":"suitcase","w":94.50481414794922,"x":541.1023559570313,"y":223.1418914794922},{"coasting":false,"conf":0.35472187399864197,"h":115.2714614868164,"id":5,"label":"book","w":39.733985900878906,"x":159.75457763671875,"y":164.17190551757813},{"coasting":false,"conf":0.396310955286026,"h":132.6211700439453,"id":76,"label":"book","w":34.08744430541992,"x":121.14865112304688,"y":135.2948455810547},{"coasting":false,"conf":0.1892549991607666,"h":138.63363647460938,"id":80,"label":"book","w":33.342987060546875,"x":105.69752502441406,"y":125.5853042602539},{"coasting":false,"conf":0.25983572006225586,"h":94.69818878173828,"id":90,"label":"suitcase","w":119.10274505615234,"x":516.9878540039063,"y":403.6445617675781},{"coasting":false,"conf":0.20558108389377594,"h":574.7664794921875,"id":91,"label":"refrigerator","w":284.3797607421875,"x":275.0647277832031,"y":84.32371520996094}],"v":2}
+{"age_ms":857,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":1},"tracks":[{"coasting":false,"conf":0.9696899056434631,"h":705.5886840820313,"id":1,"label":"person","w":637.87744140625,"x":639.8095092773438,"y":6.048919677734375},{"coasting":false,"conf":0.4147852957248688,"h":122.04730987548828,"id":2,"label":"book","w":38.23244857788086,"x":137.78585815429688,"y":150.5751953125},{"coasting":false,"conf":0.3644256591796875,"h":145.8472137451172,"id":3,"label":"book","w":49.19587707519531,"x":67.95243072509766,"y":112.44939422607422},{"coasting":false,"conf":0.6059388518333435,"h":177.36814880371094,"id":4,"label":"suitcase","w":93.94400787353516,"x":541.3924560546875,"y":222.77447509765625},{"coasting":false,"conf":0.526530921459198,"h":114.9938735961914,"id":5,"label":"book","w":39.576263427734375,"x":159.8744354248047,"y":163.9948272705078},{"coasting":false,"conf":0.40082332491874695,"h":132.8798370361328,"id":76,"label":"book","w":34.18208312988281,"x":121.1234130859375,"y":135.07403564453125},{"coasting":false,"conf":0.20785921812057495,"h":137.87655639648438,"id":80,"label":"book","w":34.01804733276367,"x":105.04139709472656,"y":126.74617004394531},{"coasting":false,"conf":0.29394766688346863,"h":96.36125183105469,"id":90,"label":"suitcase","w":118.5226058959961,"x":517.5293579101563,"y":402.9290466308594},{"coasting":false,"conf":0.1852957308292389,"h":549.6361083984375,"id":91,"label":"refrigerator","w":282.782958984375,"x":277.307861328125,"y":84.58984375}],"v":2}
+{"age_ms":874,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":1},"tracks":[{"coasting":false,"conf":0.9685537219047546,"h":708.5921630859375,"id":1,"label":"person","w":637.193115234375,"x":640.0756225585938,"y":3.61572265625},{"coasting":false,"conf":0.35379907488822937,"h":120.03474426269531,"id":2,"label":"book","w":38.093650817871094,"x":137.96881103515625,"y":151.71713256835938},{"coasting":false,"conf":0.4393017888069153,"h":144.66758728027344,"id":3,"label":"book","w":49.04117202758789,"x":68.06845092773438,"y":114.20915985107422},{"coasting":false,"conf":0.5,"h":178.12232971191406,"id":4,"label":"suitcase","w":94.42745208740234,"x":540.9863891601563,"y":222.79380798339844},{"coasting":false,"conf":0.3762325644493103,"h":113.157958984375,"id":5,"label":"book","w":39.75291442871094,"x":159.36341857910156,"y":166.32916259765625},{"coasting":false,"conf":0.4617537260055542,"h":131.65589904785156,"id":76,"label":"book","w":35.18520736694336,"x":120.65654754638672,"y":136.03298950195313},{"coasting":false,"conf":0.21480602025985718,"h":138.30557250976563,"id":80,"label":"book","w":34.34611511230469,"x":105.19281005859375,"y":126.53166198730469},{"coasting":false,"conf":0.17576473951339722,"h":97.32816314697266,"id":90,"label":"suitcase","w":117.05291748046875,"x":518.3802490234375,"y":401.4980163574219},{"coasting":false,"conf":0.2438773363828659,"h":550.2063598632813,"id":91,"label":"refrigerator","w":283.01104736328125,"x":276.471435546875,"y":84.9320068359375}],"v":2}
+{"age_ms":852,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":1},"tracks":[{"coasting":false,"conf":0.9695407152175903,"h":707.5276489257813,"id":1,"label":"person","w":635.520263671875,"x":641.71044921875,"y":5.212493896484375},{"coasting":false,"conf":0.36121124029159546,"h":121.01895141601563,"id":2,"label":"book","w":38.604679107666016,"x":137.5082550048828,"y":151.23764038085938},{"coasting":false,"conf":0.42642098665237427,"h":150.62368774414063,"id":3,"label":"book","w":49.29256057739258,"x":67.8944091796875,"y":108.485107421875},{"coasting":false,"conf":0.5157365202903748,"h":178.19967651367188,"id":4,"label":"suitcase","w":94.31143188476563,"x":541.0443725585938,"y":223.16122436523438},{"coasting":false,"conf":0.411525160074234,"h":115.35979461669922,"id":5,"label":"book","w":39.65827941894531,"x":159.7041015625,"y":164.3733673095703},{"coasting":false,"conf":0.36806437373161316,"h":132.81675720214844,"id":76,"label":"book","w":34.21993637084961,"x":121.36315155029297,"y":134.8532257080078},{"coasting":false,"conf":0.2342272698879242,"h":137.8702392578125,"id":80,"label":"book","w":34.01173782348633,"x":105.3189926147461,"y":126.43702697753906},{"coasting":false,"conf":0.2065390646457672,"h":96.63198852539063,"id":90,"label":"suitcase","w":117.71041107177734,"x":518.1288452148438,"y":401.7301025390625},{"coasting":true,"conf":0.2538129687309265,"h":570.2421875,"id":91,"label":"refrigerator","w":282.74493408203125,"x":277.9161376953125,"y":84.85598754882813}],"v":2}
+{"age_ms":865,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":1},"tracks":[{"coasting":false,"conf":0.9705700874328613,"h":707.1094360351563,"id":1,"label":"person","w":638.5237426757813,"x":639.3152465820313,"y":4.946380615234375},{"coasting":false,"conf":0.1559312343597412,"h":125.22703552246094,"id":2,"label":"book","w":36.07477569580078,"x":138.71958923339844,"y":148.3674774169922},{"coasting":false,"conf":0.4206559956073761,"h":149.8888397216797,"id":3,"label":"book","w":48.712425231933594,"x":68.33918762207031,"y":109.04590606689453},{"coasting":false,"conf":0.5006558895111084,"h":176.36256408691406,"id":4,"label":"suitcase","w":94.31143188476563,"x":541.2957763671875,"y":223.12255859375},{"coasting":false,"conf":0.3065766394138336,"h":116.05377960205078,"id":5,"label":"book","w":39.46269989013672,"x":159.77349853515625,"y":162.95425415039063},{"coasting":false,"conf":0.40470457077026367,"h":133.27099609375,"id":76,"label":"book","w":34.787742614746094,"x":121.00985717773438,"y":134.99200439453125},{"coasting":false,"conf":0.19636943936347961,"h":137.1131591796875,"id":80,"label":"book","w":34.10637283325195,"x":105.39469909667969,"y":127.22564697265625},{"coasting":false,"conf":0.27682948112487793,"h":94.3114242553711,"id":90,"label":"suitcase","w":118.17452239990234,"x":517.6453857421875,"y":404.0119934082031},{"coasting":false,"conf":0.20640917122364044,"h":537.1659545898438,"id":91,"label":"refrigerator","w":281.8705139160156,"x":277.95416259765625,"y":84.97003173828125}],"v":2}
+
+Note: 5,969 `data:` lines over the ~598 s the curl process actually held the connection open
+(600 s -m timeout minus connect/HTTP overhead) = ~9.98/s, matching the shim's SSE_MAX_HZ=10 cap
+continuously hit (same fix already deployed, same as M1's own measurement of ~10.0/s) — this is a
+rate-cap artefact of the shim, not the node's frame rate; see bench/benchlog.md "frames=" figures
+for the node's own rate.
+
+--- supplementary check: person presence, lock-id distribution, track-count range ---
+Script (checked against the same sse600.txt), run as: python3 -c "<script below>"
+
+import json
+n=0
+person_present=0
+lock_id_counts={}
+min_tracks=None
+max_tracks=0
+with open('sse600.txt','rb') as f:
+    for raw in f:
+        if not raw.startswith(b'data: '):
+            continue
+        n+=1
+        obj=json.loads(raw[6:].strip())
+        tracks=obj.get('tracks',[])
+        labels=[t.get('label') for t in tracks]
+        if 'person' in labels:
+            person_present+=1
+        lid=obj.get('lock',{}).get('id')
+        lock_id_counts[lid]=lock_id_counts.get(lid,0)+1
+        nt=len(tracks)
+        if min_tracks is None or nt<min_tracks: min_tracks=nt
+        if nt>max_tracks: max_tracks=nt
+print('n=',n,'person_present_frames=',person_present,'lock_id_counts=',lock_id_counts,'min_tracks=',min_tracks,'max_tracks=',max_tracks)
+
+--- output (verbatim) ---
+n= 5969 person_present_frames= 5969 lock_id_counts= {1: 5969} min_tracks= 8 max_tracks= 12

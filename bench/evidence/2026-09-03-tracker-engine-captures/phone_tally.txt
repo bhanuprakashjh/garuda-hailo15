@@ -1,0 +1,6 @@
+yolo26m 75/15    n=897    90.0s | phone ids  12 | lock ids  10 | no-phone states  269 (29%) | coasting entries  356 | x range [ -11478,    2956] | live conf mean 0.67 | box w mean 103 px | longest lock  15.2s | age max  194
+yolo26m 25/5     n=897    90.0s | phone ids  22 | lock ids  16 | no-phone states  243 (27%) | coasting entries  250 | x range [  -2608,    6630] | live conf mean 0.65 | box w mean  99 px | longest lock  23.1s | age max  193
+yolov8m 75/15    n=897    90.0s | phone ids  35 | lock ids  11 | no-phone states  312 (34%) | coasting entries  718 | x range [  -4244,    8117] | live conf mean 0.65 | box w mean 103 px | longest lock  34.1s | age max  151
+hailo kalman (pre-routine) n=897    90.0s | phone ids   0 | lock ids   0 | no-phone states  897 (100%) | coasting entries    0 | x range [    n/a,    n/a] | live conf mean  n/a | box w mean n/a px | longest lock   0.0s | age max  152
+hailo kalman default n=894    89.7s | phone ids  37 | lock ids  15 | no-phone states   29 ( 3%) | coasting entries  793 | x range [    263,    1097] | live conf mean 0.47 | box w mean 138 px | longest lock  15.2s | age max  157
+hailo kalman loose n=1494  150.0s | phone ids 111 | lock ids  36 | no-phone states  281 (18%) | coasting entries 2732 | x range [     73,    1245] | live conf mean 0.49 | box w mean 104 px | longest lock  56.3s | age max  156

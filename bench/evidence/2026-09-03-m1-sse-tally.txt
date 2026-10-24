@@ -1,0 +1,91 @@
+M1 tracking parity — SSE tally over the 10-minute capture
+Capture: curl -s -m 600 -o /tmp/claude-1000/-media-bhanu1234-Development-GARUDASDK/2a21f19e-5fb6-4e5f-9942-59eeea5039f4/scratchpad/m1-bench/sse600.txt http://10.0.0.1:8098/api/events
+Capture window: 2026-09-02 19:46:54 UTC (curl start, PC clock) through ~19:56:54 UTC (600 s later).
+Raw capture NOT committed (1,925,989 bytes); left at
+/tmp/claude-1000/-media-bhanu1234-Development-GARUDASDK/2a21f19e-5fb6-4e5f-9942-59eeea5039f4/scratchpad/m1-bench/sse600.txt
+on this machine, per instructions (scratchpad only, never committed).
+
+Tally script (tally_sse.py), run as: python3 tally_sse.py sse600.txt
+
+--- script source ---
+import json, sys
+
+path = sys.argv[1]
+n_data = 0
+n_tracks_nonempty = 0
+n_coasting = 0
+lock_ids = set()
+first5 = []
+last5 = []
+ages = []
+
+with open(path, "rb") as f:
+    for raw in f:
+        if not raw.startswith(b"data: "):
+            continue
+        n_data += 1
+        line = raw[6:].strip()
+        if len(first5) < 5:
+            first5.append(line.decode("utf-8", "replace"))
+        last5.append(line.decode("utf-8", "replace"))
+        if len(last5) > 5:
+            last5.pop(0)
+        try:
+            obj = json.loads(line)
+        except Exception as e:
+            print(f"PARSE ERROR on data line {n_data}: {e}")
+            continue
+        tracks = obj.get("tracks", [])
+        if tracks:
+            n_tracks_nonempty += 1
+        lock = obj.get("lock", {})
+        if lock.get("coasting") is True:
+            n_coasting += 1
+        lid = lock.get("id")
+        if lid is not None:
+            lock_ids.add(lid)
+        age = obj.get("age_ms")
+        if age is not None:
+            ages.append(age)
+
+print(f"total data: lines = {n_data}")
+print(f"frames with non-empty tracks = {n_tracks_nonempty}")
+print(f"frames with lock.coasting == true = {n_coasting}")
+print(f"distinct lock.id values seen = {sorted(lock_ids)}")
+if ages:
+    ages_sorted = sorted(ages)
+    print(f"age_ms count={len(ages_sorted)} min={ages_sorted[0]} max={ages_sorted[-1]}")
+
+print("\n--- first 5 data lines ---")
+for l in first5:
+    print(l)
+print("\n--- last 5 data lines ---")
+for l in last5:
+    print(l)
+
+--- script output (verbatim) ---
+total data: lines = 5978
+frames with non-empty tracks = 0
+frames with lock.coasting == true = 0
+distinct lock.id values seen = []
+age_ms count=5978 min=32 max=125
+
+--- first 5 data lines ---
+{"age_ms":35,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":null},"tracks":[],"v":2}
+{"age_ms":120,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":null},"tracks":[],"v":2}
+{"age_ms":32,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":null},"tracks":[],"v":2}
+{"age_ms":32,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":null},"tracks":[],"v":2}
+{"age_ms":62,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":null},"tracks":[],"v":2}
+
+--- last 5 data lines ---
+{"age_ms":32,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":null},"tracks":[],"v":2}
+{"age_ms":32,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":null},"tracks":[],"v":2}
+{"age_ms":62,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":null},"tracks":[],"v":2}
+{"age_ms":34,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":null},"tracks":[],"v":2}
+{"age_ms":32,"cal":{"fit":null,"n":0},"depth_engine":"y26d","detector":{"mode":"primary","prompt":[]},"distance":{"est_m":null,"raw_m":null,"valid":false},"frame":{"height":720,"width":1280},"gesture":{"held_ms":0,"name":null,"track_id":null},"lock":{"class":"person","coasting":false,"id":null},"tracks":[],"v":2}
+
+Note: 5978 data: lines over the ~598 s the curl process actually held the connection open
+(600 s -m timeout minus connect/TLS-less HTTP overhead) = ~10.0/s, matching the shim's
+SSE_MAX_HZ=10 cap continuously hit (post shim fix f882b67, same as M0's post-fix addendum
+measurement of 10.0/s over a 10 s window) — this is a rate-cap artefact of the shim, not the
+node's frame rate; see bench/benchlog.md "frames=" figures for the node's own rate.

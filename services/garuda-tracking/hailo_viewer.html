@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Garuda · Hailo tracking</title>
+<style>
+:root{color-scheme:dark;font-family:ui-monospace,Menlo,Consolas,monospace;background:#0d0f12;color:#dfe3e8}
+*{box-sizing:border-box}body{margin:0;padding:16px}header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px;flex-wrap:wrap}
+h1{font-size:18px;margin:0}a{color:#8bc4ff;font-size:14px}main{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:16px}
+iframe{width:100%;height:calc(100vh - 95px);min-height:520px;border:1px solid #333b45;border-radius:6px;background:#14181d}
+aside{padding:16px;background:#14181d;border:1px solid #333b45;border-radius:6px}h2{font-size:16px;margin:0 0 14px}
+p{font-size:14px;line-height:1.6;color:#aab4c0}#status{font-weight:bold;color:#ffca72}#status[data-live=true]{color:#8bc4ff}
+.track{padding:14px 0;border-top:1px solid #333b45}.id{font-size:30px;font-weight:bold;color:white}.detail{font-size:14px;color:#aab4c0;line-height:1.7}
+button{font:inherit;font-size:14px;color:inherit;background:#1b2027;border:1px solid #526174;border-radius:5px;padding:10px;cursor:pointer}
+button:focus-visible{outline:3px solid #8bc4ff;outline-offset:2px}.track{display:block;width:100%;text-align:left;margin-bottom:8px}
+.track[aria-pressed=true]{border:2px solid #55bbff;background:#142d40}#selection{font-size:24px;line-height:1.3;color:#8bc4ff}#selection[data-state=lost]{color:#ffca72}#notice{color:#ffca72;min-height:22px}
+dl{font-size:14px;line-height:1.8}dt{color:#aab4c0}dd{margin:0 0 8px;overflow-wrap:anywhere}
+@media(max-width:900px){main{grid-template-columns:1fr}iframe{height:70vh;min-height:440px}}
+</style><script defer src="/hailo_viewer.js"></script></head><body>
+<header><h1>Garuda / Hailo tracking</h1><a id="standalone" target="_blank" rel="noopener">Open standalone Hailo viewer ↗</a></header>
+<main><section aria-label="Hailo live video"><iframe id="video" title="Hailo camera, tracked boxes and IDs" allow="autoplay; fullscreen" allowfullscreen></iframe></section>
+<aside><h2>Project input</h2><p id="status" role="status">Connecting…</p>
+<p id="selection" role="status">No track selected</p><button id="clearSelection" type="button">Clear selection</button>
+<p id="notice" role="status"></p>
+<h2>Detector diagnostics</h2>
+<p id="diagnostics" role="status">Waiting for native diagnostics.</p>
+<canvas id="rawCanvas" width="480" height="270" style="width:100%;background:#090b0e;border:1px solid #526174" aria-label="Raw detection positions, separate from live video"></canvas>
+<p>Orange: raw detector boxes on a separate frame map, not synchronized video. Blue selection remains on the live tracked view.</p>
+<div id="rawList"></div>
+<h2>Tracked objects</h2>
+<div id="tracks">Waiting for tracks.</div>
+<dl><dt>Metadata arrival age</dt><dd id="age">—</dd><dt>Source session</dt><dd id="session">—</dd></dl>
+<p>Press Play in the camera viewer. Detector, tracker, video and boxes still come from Hailo.</p>
+<p>Click a tracked box, ID badge, or card to select. If that track disappears, selection stays lost until you select again.</p>
+<p>Hailo tracking is unchanged. No automatic identity matching or control output.</p>
+<p>Arrival age is not camera latency. Tracking IDs can change after occlusion.</p>
+</aside></main></body></html>

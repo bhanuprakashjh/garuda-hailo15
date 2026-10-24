@@ -1,0 +1,78 @@
+{
+  "version": "3.0.0",
+  "metadata": {
+    "architecture": "hailo15l",
+    "content_hash": "",
+    "description": "Fresh tracking initial bench profile; framerate is configuration, not measured throughput.",
+    "generation_timestamp": ""
+  },
+  "application_input_streams": {
+    "format": "IMAGE_FORMAT_NV12",
+    "method": "INTERPOLATION_TYPE_BILINEAR",
+    "resolutions": [
+      {
+        "stream_id": "sink0",
+        "width": 640,
+        "height": 640,
+        "framerate": 20,
+        "pool_max_buffers": 6,
+        "scaling_mode": "LETTERBOX_MIDDLE"
+      },
+      {
+        "stream_id": "sink1",
+        "width": 1280,
+        "height": 720,
+        "framerate": 20,
+        "pool_max_buffers": 6
+      }
+    ]
+  },
+  "digital_zoom": {
+    "enabled": false,
+    "magnification": 1.0,
+    "mode": "DIGITAL_ZOOM_MODE_MAGNIFICATION",
+    "roi": {
+      "x": 0,
+      "y": 0,
+      "width": 3840,
+      "height": 2160
+    }
+  },
+  "flip": {
+    "enabled": false,
+    "direction": "FLIP_DIRECTION_NONE"
+  },
+  "gmv": {
+    "frequency": 0.0,
+    "source": "isp"
+  },
+  "hailort": {
+    "device-id": "device0"
+  },
+  "motion_detection": {
+    "enabled": false,
+    "buffer_pool_size": 8,
+    "resolution": {
+      "width": 640,
+      "height": 480,
+      "framerate": 30
+    },
+    "roi": {
+      "x": 0,
+      "y": 0,
+      "width": 640,
+      "height": 480
+    },
+    "sensitivity_level": "MEDIUM",
+    "threshold": 0.5
+  },
+  "optical_zoom": {
+    "enabled": false,
+    "magnification": 1.0,
+    "max_dewarping_magnification": 3.0
+  },
+  "rotation": {
+    "enabled": false,
+    "angle": "ROTATION_ANGLE_0"
+  }
+}

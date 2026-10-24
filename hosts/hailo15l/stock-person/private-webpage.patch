@@ -1,0 +1,6 @@
+diff --git a/hailo-analytics/apps/webserver/resources/webpage.cpp b/hailo-analytics/apps/webserver/resources/webpage.cpp
+--- a/hailo-analytics/apps/webserver/resources/webpage.cpp
++++ b/hailo-analytics/apps/webserver/resources/webpage.cpp
+@@ -5,1 +5,1 @@
+-#define WEBPAGE_BUNDLE_PATH "/usr/share/hailo/webpage"
++#define WEBPAGE_BUNDLE_PATH "/opt/hailo-person/webpage"

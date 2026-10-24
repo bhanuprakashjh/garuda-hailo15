@@ -1,0 +1,55 @@
+<style>
+#bench-layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:16px;align-items:start}
+#video-pane{min-width:0;position:sticky;top:10px}#video-pane #wrap{display:block;width:100%}#video-pane #v{width:100%;height:auto}
+#bench-layout #tuning{margin:0;max-width:none;position:sticky;top:10px;max-height:calc(100vh - 80px);overflow-y:auto;box-sizing:border-box;padding:14px}
+#bench-layout #tuning .grid{grid-template-columns:minmax(0,1fr);gap:8px}
+#bench-layout #tuning h3{margin:12px 0 6px}#bench-layout #tuning p{margin:8px 0}
+#bench-layout #tuning-live{overflow-wrap:anywhere}
+@media(max-width:1000px){#bench-layout{grid-template-columns:minmax(0,1fr)}#video-pane,#bench-layout #tuning{position:static;max-height:none}#bench-layout #tuning .grid{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}}
+#tuning{margin:16px 0;padding:16px;background:#141b23;border:1px solid #364657;border-radius:10px;max-width:1246px;font:16px/1.5 system-ui,sans-serif}
+#tuning h2{margin:0;font-size:20px}#tuning h3{font-size:16px}#tuning p,#tuning small{color:#b9c7d6}#tuning small{font-size:14px}
+#tuning .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px}
+#tuning label{display:block;font-size:14px;margin:10px 0}#tuning input[type=range]{width:100%;accent-color:#65c3ff}
+#tuning output{float:right;color:#94d6ff}#tuning button{font:14px system-ui;padding:10px 14px;min-height:42px}
+#tuning button:disabled{opacity:.5}#tuning :focus-visible{outline:2px solid #65c3ff;outline-offset:3px}
+#tuning .primary{background:#174969}#tuning-live{padding:10px;background:#0d131a;font-size:14px;white-space:pre-line}
+#tuning-status{color:#94d6ff!important}
+</style>
+<section id="tuning" aria-labelledby="tuning-title">
+<h2 id="tuning-title">Live tuning</h2><p>Compare motion blur, smoothness and lock stability. Change one setting at a time.</p>
+<div id="tuning-model" style="font-size:14px;overflow-wrap:anywhere">Model: reading…</div>
+<div id="tuning-live">Reading board settings…</div>
+<div class="grid">
+<div><h3>Camera · applies live</h3><label><input id="t-auto" type="checkbox" checked> Automatic exposure and gain</label><div id="camera-fields"></div>
+<small>Shorter exposure reduces blur but needs more light or gain. Gain can add noise. Sensor readback may be rounded.</small>
+<div class="bar"><button id="t-camera" class="primary">Apply camera</button><button id="t-10ms">10 ms test</button><button id="t-auto-button">Auto exposure</button></div></div>
+<div><h3>Frame rates · restarts tracker</h3><div id="fps-fields"></div><small>Requested rates, not guaranteed throughput. Preview FPS changes video smoothness, not detection speed. Higher rates increase board load.</small></div>
+<div><h3>Tracking · restarts tracker</h3><div id="track-fields"></div><small>Lower confidence may admit false detections. Coast retention does not make stale observations valid or automatically re-lock after exit.</small></div>
+</div>
+<div class="bar"><button id="t-pipeline" class="primary">Apply FPS &amp; tracking · restart</button><button id="t-restore">Restore baseline · restart</button><button id="t-reload">Reload current values</button></div>
+<p id="tuning-status" role="status">Sliders are drafts until Apply. Restarting briefly stops video and clears selection.</p>
+</section>
+<script>
+(()=>{
+const $=id=>document.getElementById(id),keys=['detector_fps','preview_fps','birth_confidence','control_confidence','confirm_ms','coast_ms'];
+const specs=[['exposure_ms','Exposure',.1,33,.1,10,'ms','camera'],['gain','Gain',1,30,.1,8,'×','camera'],['detector_fps','Detector input',5,30,1,20,'FPS','fps'],['preview_fps','Video preview',1,30,1,10,'FPS','fps'],['birth_confidence','New-track confidence',.15,.95,.05,.5,'','track'],['control_confidence','Lock confidence',.15,.95,.05,.4,'','track'],['confirm_ms','Confirmation time',50,1000,10,120,'ms','track'],['coast_ms','Coast retention',200,3000,100,1200,'ms','track']];
+specs.forEach(s=>{if(s[0]==='birth_confidence')s[2]=.20;if(s[0]==='coast_ms')s[2]=300;});
+specs.forEach(([k,label,min,max,step,v,unit,group])=>{$(group+'-fields').insertAdjacentHTML('beforeend','<label for="t-'+k+'">'+label+'<output id="o-'+k+'"></output></label><input type="range" id="t-'+k+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+v+'">');});
+let busy=false,last=null,board=null;
+function labels(){specs.forEach(([k,l,mi,ma,s,v,u])=>$('o-'+k).textContent=Number($('t-'+k).value)+(u?' '+u:''));['exposure_ms','gain'].forEach(k=>$('t-'+k).disabled=busy||$('t-auto').checked);}
+specs.forEach(([k])=>$('t-'+k).oninput=labels);$('t-auto').onchange=labels;
+function fill(j){keys.forEach(k=>$('t-'+k).value=j.settings[k]);$('t-auto').checked=j.camera.auto;$('t-exposure_ms').value=Math.min(33,j.camera.exposure_ms);$('t-gain').value=Math.min(30,j.camera.gain);labels();}
+async function decode(r){let j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||'Board unavailable');return j;}
+function show(j){board=j;$('tuning-model').textContent='Model config: '+(j.model||'unknown');let rate='measuring…';if(last&&j.capture_ms>last.capture&&j.sequence>last.sequence&&j.age_ms<1000)rate=((j.sequence-last.sequence)*1000/(j.capture_ms-last.capture)).toFixed(1)+' FPS';last={sequence:j.sequence,capture:j.capture_ms};let c=j.camera,l=j.lock;
+$('tuning-live').textContent='Applied: detector '+j.settings.detector_fps+' FPS · preview '+j.settings.preview_fps+' FPS | Measured processing: '+(j.age_ms>1000?'STALE':rate)+'\nCamera readback: '+(c.auto?'Auto':'Manual')+' · '+c.exposure_ms.toFixed(2)+' ms · '+c.gain.toFixed(2)+'× | Frame age: '+Math.round(j.age_ms)+' ms\nLock: '+(l.state||'none')+' · '+(l.reason||'—')+' · control '+(l.control_valid?'VALID':'HOLD');}
+async function refresh(reset=false){if(busy)return;try{let j=await decode(await fetch('/api/tuning',{cache:'no-store'}));show(j);if(reset)fill(j);}catch(e){$('tuning-live').textContent='Readback unavailable: '+e.message;}}
+async function apply(action,values){if(busy)return;busy=true;$('tuning-status').textContent=action==='camera'?'Applying camera…':'Restarting tracker… please wait, then select the phone again.';document.querySelectorAll('#tuning button,#tuning input').forEach(e=>e.disabled=true);
+try{let j=await decode(await fetch('/api/tuning',{method:'POST',headers:{'Content-Type':'application/json','X-Garuda-Tuning':'1'},body:JSON.stringify({action,values})}));show(j);fill(j);$('tuning-status').textContent=action==='camera'?'Camera applied. Compare movement now.':'Applied and fresh frames verified. Select the phone again.';}catch(e){$('tuning-status').textContent='Could not apply: '+e.message;}finally{busy=false;document.querySelectorAll('#tuning button,#tuning input').forEach(e=>e.disabled=false);labels();}}
+function camera(){return {auto:$('t-auto').checked,exposure_ms:Number($('t-exposure_ms').value),gain:Number($('t-gain').value)};}
+$('t-camera').onclick=()=>apply('camera',camera());$('t-auto-button').onclick=()=>apply('camera',{...camera(),auto:true});
+$('t-10ms').onclick=()=>{if(board)apply('camera',{auto:false,exposure_ms:10,gain:Math.max(1,Math.min(30,board.camera.gain*board.camera.exposure_ms/10))});};
+$('t-pipeline').onclick=()=>apply('pipeline',Object.fromEntries(keys.map(k=>[k,Number($('t-'+k).value)])));
+$('t-restore').onclick=()=>{if(confirm('Restore the settings saved before the first tuning change? Tracking will restart and selection clears.'))apply('restore');};
+$('t-reload').onclick=()=>refresh(true);refresh(true);setInterval(()=>refresh(),2000);labels();
+})();
+</script>

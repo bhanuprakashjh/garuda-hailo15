@@ -1,0 +1,94 @@
+# Coast-window validation on the Hailo-15L SBC, 2026-09-03, owner present at the bench.
+# Capture: sse_capture.py = PC-side wall-clock timestamp per SSE snapshot from http://10.0.0.1:8098/api/events
+# (shim cap 10 Hz, so times are +-0.1 s). timeline.py prints each change of (lock id, lock coasting, track ids,
+# coasting ids) relative to the first snapshot, then every coasting episode of the LOCKED track and its outcome.
+# Routine performed by the owner each time: in view 5 s; out ~1 s; back 5 s; out ~3 s; back 5 s; out ~10 s; back.
+# Rows are filtered to changes involving a person track (face-only changes dropped) to keep the file short.
+
+## BEFORE — node b0ea29b, config track.max_lost=25 reacq=5 (mono's values), 150 s capture started 10:45:35 local
+$ python3 timeline.py before.txt
+  10.74s lock=27 (coasting) tracks=[(27, 'person'), (28, 'face'), (29, 'face')] coasting=[27, 28, 29]
+  11.04s lock=27 (coasting) tracks=[(27, 'person'), (29, 'face')] coasting=[27, 29]
+  11.34s lock=27 (coasting) tracks=[(27, 'person')] coasting=[27]
+  11.54s lock=None tracks=[] coasting=[]
+  12.74s lock=31 tracks=[(31, 'person')] coasting=[]
+  18.37s lock=31 (coasting) tracks=[(31, 'person'), (32, 'face')] coasting=[31, 32]
+  18.67s lock=31 (coasting) tracks=[(31, 'person')] coasting=[31]
+  19.27s lock=None tracks=[] coasting=[]
+  20.07s lock=34 tracks=[(34, 'person')] coasting=[]
+  59.00s lock=34 tracks=[(34, 'person')] coasting=[]
+  60.61s lock=34 (coasting) tracks=[(34, 'person'), (36, 'face')] coasting=[34, 36]
+  61.01s lock=34 (coasting) tracks=[(34, 'person')] coasting=[34]
+  61.41s lock=None tracks=[] coasting=[]
+  64.22s lock=37 tracks=[(37, 'person')] coasting=[]
+  68.64s lock=37 (coasting) tracks=[(37, 'person'), (38, 'face')] coasting=[37, 38]
+  69.14s lock=37 (coasting) tracks=[(37, 'person')] coasting=[37]
+  69.44s lock=None tracks=[] coasting=[]
+  70.74s lock=39 (coasting) tracks=[(39, 'person')] coasting=[39]
+  70.95s lock=39 tracks=[(39, 'person')] coasting=[]
+  71.05s lock=39 (coasting) tracks=[(39, 'person')] coasting=[39]
+  71.15s lock=39 tracks=[(39, 'person')] coasting=[]
+  74.66s lock=39 (coasting) tracks=[(39, 'person'), (40, 'face')] coasting=[39, 40]
+  75.26s lock=39 (coasting) tracks=[(39, 'person')] coasting=[39]
+  75.46s lock=None tracks=[] coasting=[]
+  77.17s lock=41 tracks=[(41, 'person')] coasting=[]
+  81.28s lock=41 (coasting) tracks=[(41, 'person'), (42, 'face')] coasting=[41, 42]
+  81.99s lock=41 (coasting) tracks=[(41, 'person')] coasting=[41]
+  82.09s lock=None tracks=[] coasting=[]
+  84.20s lock=43 tracks=[(43, 'person')] coasting=[]
+  89.42s lock=43 tracks=[(43, 'person')] coasting=[]
+ 134.89s lock=43 tracks=[(43, 'person')] coasting=[]
+ 141.02s lock=43 tracks=[(43, 'person')] coasting=[]
+--- coasting episodes of the locked track:
+  id 27 coasted 0.80s -> TRACK DIED (lock None)
+  id 31 coasted 0.90s -> TRACK DIED (lock None)
+  id 34 coasted 0.80s -> TRACK DIED (lock None)
+  id 37 coasted 0.80s -> TRACK DIED (lock None)
+  id 39 coasted 0.20s -> SURVIVED (same id 39 live again)
+  id 39 coasted 0.10s -> SURVIVED (same id 39 live again)
+  id 39 coasted 0.80s -> TRACK DIED (lock None)
+  id 41 coasted 0.81s -> TRACK DIED (lock None)
+snapshots: 1496 span: 150.1s
+
+## AFTER — same node binary, config track.max_lost=75 reacq=15 (deployed 10:48), 240 s capture started 10:53:04 local
+$ python3 timeline.py after2.txt
+  28.30s lock=15 (coasting) tracks=[(15, 'person'), (17, 'face')] coasting=[15, 17]
+  30.11s lock=15 (coasting) tracks=[(15, 'person')] coasting=[15]
+  30.71s lock=None tracks=[] coasting=[]
+  44.16s lock=18 tracks=[(18, 'person')] coasting=[]
+  48.98s lock=18 (coasting) tracks=[(18, 'person'), (19, 'face')] coasting=[18, 19]
+  49.38s lock=18 (coasting) tracks=[(18, 'person'), (19, 'face')] coasting=[18, 19]
+  51.39s lock=18 (coasting) tracks=[(18, 'person')] coasting=[18]
+  51.99s lock=None tracks=[] coasting=[]
+  57.41s lock=20 tracks=[(20, 'person')] coasting=[]
+  62.63s lock=20 (coasting) tracks=[(20, 'person'), (23, 'face')] coasting=[20, 23]
+  62.84s lock=20 (coasting) tracks=[(20, 'person'), (23, 'face'), (24, 'person')] coasting=[20, 23]
+  62.93s lock=20 (coasting) tracks=[(20, 'person'), (23, 'face'), (24, 'person')] coasting=[20, 23, 24]
+  64.54s lock=25 (coasting) tracks=[(20, 'person'), (23, 'face'), (24, 'person'), (25, 'person')] coasting=[20, 23, 24, 25]
+  64.74s lock=25 tracks=[(20, 'person'), (24, 'person'), (25, 'person')] coasting=[20, 24]
+  65.24s lock=25 tracks=[(24, 'person'), (25, 'person')] coasting=[24]
+  65.34s lock=25 (coasting) tracks=[(24, 'person'), (25, 'person')] coasting=[24, 25]
+  65.55s lock=25 tracks=[(25, 'person')] coasting=[]
+  67.85s lock=25 (coasting) tracks=[(25, 'person'), (26, 'face'), (27, 'person')] coasting=[25]
+ 103.89s lock=25 (coasting) tracks=[(25, 'person'), (26, 'face'), (28, 'person')] coasting=[25, 28]
+ 103.99s lock=25 (coasting) tracks=[(25, 'person'), (26, 'face'), (28, 'person')] coasting=[25, 26, 28]
+ 104.09s lock=25 (coasting) tracks=[(25, 'person'), (26, 'face'), (28, 'person'), (30, 'person')] coasting=[25, 28]
+ 104.19s lock=25 (coasting) tracks=[(25, 'person'), (26, 'face'), (28, 'person'), (30, 'person'), (31, 'person')] coasting=[25, 28, 30]
+ 110.21s lock=31 (coasting) tracks=[(26, 'face'), (31, 'person')] coasting=[31]
+ 110.31s lock=31 (coasting) tracks=[(26, 'face'), (31, 'person'), (32, 'person')] coasting=[31]
+ 111.82s lock=32 (coasting) tracks=[(26, 'face'), (31, 'person'), (32, 'person'), (33, 'person')] coasting=[31, 32]
+--- coasting episodes of the locked track:
+  id 15 coasted 2.41s -> TRACK DIED (lock None)
+  id 18 coasted 0.10s -> SURVIVED (same id 18 live again)
+  id 18 coasted 2.61s -> TRACK DIED (lock None)
+  id 20 coasted 0.10s -> SURVIVED (same id 20 live again)
+  id 20 coasted 1.81s -> LOCK MOVED to live id 25 (re-acquire rule; coasted id 20 not returned)
+  id 25 coasted 0.20s -> SURVIVED (same id 25 live again)
+  id 25 coasted 0.10s -> SURVIVED (same id 25 live again)
+  id 25 coasted 0.70s -> LOCK MOVED to live id 31 (re-acquire rule; coasted id 25 not returned)
+  id 31 coasted 0.50s -> LOCK MOVED to live id 32 (re-acquire rule; coasted id 31 not returned)
+  id 32 coasted 0.50s -> LOCK MOVED to live id 33 (re-acquire rule; coasted id 32 not returned)
+snapshots: 2392 span: 240.0s
+
+## AFTER (first attempt, discarded): 150 s capture started 10:48:44 — the person track never coasted (owner did not leave
+## the frame within the window; the lock changed id only after the capture ended). Kept in the scratchpad as after.txt.
